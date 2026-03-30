@@ -1,17 +1,27 @@
 /**
- * Dashboard controller: connects to WebSocket and drives UI updates.
+ * Dashboard controller: handles ESP connection, session control, and real-time display.
  */
 
-// Initialize charts
-const swayChart = new SwayChart('sway-canvas');
-const timeSeriesChart = new TimeSeriesChart('timeseries-canvas');
+// ---- Charts ----------------------------------------------------------------
+const swayChart  = new SwayChart('sway-canvas');
+const forceChart = new ForceDistributionChart('force-canvas');
 
-// DOM references
-const statusEl = document.getElementById('connection-status');
-const scoreEl  = document.getElementById('balance-score');
-const timerEl  = document.getElementById('session-timer');
-const stateEl  = document.getElementById('session-state');
-const esp32El  = document.getElementById('esp32-status');
+// ---- DOM refs --------------------------------------------------------------
+const wsStatusEl    = document.getElementById('ws-status');
+const espStatusEl   = document.getElementById('esp-status');
+const scoreEl       = document.getElementById('balance-score');
+const timerEl       = document.getElementById('session-timer');
+const stateEl       = document.getElementById('session-state');
+const startBtn      = document.getElementById('start-btn');
+const stopBtn       = document.getElementById('stop-btn');
+const connectBtn    = document.getElementById('connect-btn');
+const disconnectBtn = document.getElementById('disconnect-btn');
+const wifiConnectBtn= document.getElementById('wifi-connect-btn');
+const portSelect    = document.getElementById('port-select');
+const baudInput     = document.getElementById('baud-input');
+const wifiHostInput = document.getElementById('wifi-host');
+const wifiPortInput = document.getElementById('wifi-port');
+const refreshBtn    = document.getElementById('refresh-ports-btn');
 
 const metricEls = {
   swayRMS:    document.getElementById('metric-sway-rms'),
@@ -23,35 +33,35 @@ const metricEls = {
   freq:       document.getElementById('metric-freq'),
 };
 
-// Session timing
+// ---- State -----------------------------------------------------------------
 let sessionStartTime = null;
 let timerInterval    = null;
+let espConnected     = false;
 
-// WebSocket connection
+// ---- WebSocket connection to local server ----------------------------------
 let ws = null;
 let reconnectTimeout = null;
 const WS_URL = `ws://${window.location.hostname}:8080`;
 
-function connect() {
+function connectWS() {
   ws = new WebSocket(WS_URL);
 
   ws.onopen = () => {
-    statusEl.textContent = 'Connected';
-    statusEl.className = 'status connected';
+    wsStatusEl.textContent = 'Server connected';
+    wsStatusEl.className = 'status connected';
   };
 
   ws.onclose = () => {
-    statusEl.textContent = 'Disconnected';
-    statusEl.className = 'status disconnected';
-    reconnectTimeout = setTimeout(connect, 2000);
+    wsStatusEl.textContent = 'Server disconnected';
+    wsStatusEl.className = 'status disconnected';
+    reconnectTimeout = setTimeout(connectWS, 2000);
   };
 
   ws.onerror = () => ws.close();
 
   ws.onmessage = (event) => {
     try {
-      const msg = JSON.parse(event.data);
-      handleMessage(msg);
+      handleMessage(JSON.parse(event.data));
     } catch (e) {
       console.warn('[WS] Parse error:', e);
     }
@@ -60,58 +70,67 @@ function connect() {
 
 function handleMessage(msg) {
   switch (msg.type) {
-    case 'frame':        handleFrame(msg.data);      break;
-    case 'session_end':  handleSessionEnd(msg.data); break;
-    case 'status':       handleStatus(msg.data);     break;
+    case 'frame':       handleFrame(msg.data);      break;
+    case 'session_end': handleSessionEnd(msg.data); break;
+    case 'status':      handleStatus(msg.data);     break;
   }
 }
 
+// ---- ESP status messages ---------------------------------------------------
 function handleStatus(s) {
-  if (!esp32El) return;
-  // Show meaningful status badges for WiFi / serial events
   const labels = {
-    ready:               '✓ ESP32 ready',
-    wifi_connected:      `✓ WiFi  ${s.ip ?? ''}`,
-    wifi_connecting:     '… WiFi connecting',
-    wifi_timeout:        '✗ WiFi timeout',
-    wifi_client_connected:   '✓ TCP connected',
-    wifi_tcp_connected:  '✓ TCP connected',
-    wifi_tcp_disconnected: '… TCP reconnecting',
+    ready:                   '✓ ESP ready',
+    streaming:               '● Streaming',
+    idle:                    '○ Idle',
+    initializing:            '… Initializing',
+    connected:               '✓ Connected',
+    disconnected:            'Not connected',
+    serial_error:            '✗ Serial error',
+    session_started:         '● Session active',
+    session_stopped:         '○ Session stopped',
+    wifi_connected:          `✓ WiFi  ${s.ip ?? ''}`,
+    wifi_connecting:         '… WiFi connecting',
+    wifi_timeout:            '✗ WiFi timeout',
+    wifi_tcp_connected:      '✓ TCP connected',
+    wifi_tcp_disconnected:   '… TCP reconnecting',
   };
-  esp32El.textContent = labels[s.status] ?? `ESP32: ${s.status}`;
+
+  if (s.status === 'connected') {
+    espConnected = true;
+    setESPConnected(true);
+  } else if (s.status === 'disconnected') {
+    espConnected = false;
+    setESPConnected(false);
+  }
+
+  espStatusEl.textContent = labels[s.status] ?? `ESP: ${s.status}`;
 }
 
-// Frame counter for chart throttling (~30fps)
+// ---- Frame handling --------------------------------------------------------
 let frameCount = 0;
 
 function handleFrame(frame) {
   frameCount++;
-  if (frameCount % 3 === 0) {
-    swayChart.addPoint(frame.rollFiltered, frame.pitchFiltered);
-    timeSeriesChart.addPoint(frame.rollFiltered, frame.pitchFiltered);
+
+  // Update force distribution chart every frame
+  forceChart.addReading(frame.f0, frame.f1, frame.f2, frame.f3);
+
+  // Throttle COP chart to ~30fps
+  if (frameCount % 2 === 0) {
+    swayChart.addPoint(frame.copXFiltered, frame.copYFiltered);
     swayChart.draw();
-    timeSeriesChart.draw();
+    forceChart.draw();
   }
 
-  updateSessionState(frame.sessionState);
+  if (frame.sessionState === 'active' && !sessionStartTime) {
+    sessionStartTime = Date.now();
+    timerInterval = setInterval(updateTimer, 100);
+  }
+
   if (frame.metrics) updateMetrics(frame.metrics);
 }
 
-function updateSessionState(state) {
-  stateEl.textContent = state.charAt(0).toUpperCase() + state.slice(1);
-  stateEl.className = 'state-value ' + state;
-
-  if (state === 'active' && !sessionStartTime) {
-    sessionStartTime = Date.now();
-    timerInterval = setInterval(updateTimer, 100);
-    swayChart.clear();
-    timeSeriesChart.clear();
-  } else if (state === 'idle') {
-    sessionStartTime = null;
-    if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
-  }
-}
-
+// ---- Session timer ---------------------------------------------------------
 function updateTimer() {
   if (!sessionStartTime) return;
   const elapsed = (Date.now() - sessionStartTime) / 1000;
@@ -120,27 +139,153 @@ function updateTimer() {
   timerEl.textContent = `${mins}:${secs.toString().padStart(2, '0')}`;
 }
 
+// ---- Metrics display -------------------------------------------------------
 function updateMetrics(m) {
   scoreEl.textContent = m.balanceScore.toFixed(0);
-  metricEls.swayRMS.textContent    = m.swayRMS.toFixed(2);
-  metricEls.pathLength.textContent = m.pathLength.toFixed(1);
-  metricEls.velocity.textContent   = m.swayVelocity.toFixed(2);
-  metricEls.area.textContent       = m.stabilityArea.toFixed(1);
+  const score = m.balanceScore;
+  scoreEl.style.color = score >= 70 ? '#4ade80' : score >= 40 ? '#fbbf24' : '#f87171';
+
+  metricEls.swayRMS.textContent    = m.swayRMS.toFixed(1);
+  metricEls.pathLength.textContent = m.pathLength.toFixed(0);
+  metricEls.velocity.textContent   = m.swayVelocity.toFixed(1);
+  metricEls.area.textContent       = m.stabilityArea.toFixed(0);
   metricEls.jerk.textContent       = m.jerkRMS.toFixed(0);
   metricEls.tiz.textContent        = (m.timeInZone * 100).toFixed(0);
   metricEls.freq.textContent       = m.frequencyFeatures.dominantFrequency.toFixed(2);
-
-  const score = m.balanceScore;
-  scoreEl.style.color = score >= 70 ? '#4ade80' : score >= 40 ? '#fbbf24' : '#f87171';
 }
 
+// ---- Session end -----------------------------------------------------------
 function handleSessionEnd(session) {
   sessionStartTime = null;
   if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
+  timerEl.textContent = '0:00';
+  setSessionActive(false);
   addSessionRow(session, true);
 }
 
-/** Render one session row with CSV download links. */
+// ---- Connection panel logic ------------------------------------------------
+function setESPConnected(connected) {
+  espConnected = connected;
+  connectBtn.disabled    =  connected;
+  disconnectBtn.disabled = !connected;
+  wifiConnectBtn.disabled = connected;
+  startBtn.disabled = !connected;
+  if (!connected) {
+    stopBtn.disabled = true;
+    setSessionActive(false);
+  }
+}
+
+function setSessionActive(active) {
+  startBtn.disabled = active || !espConnected;
+  stopBtn.disabled  = !active;
+  stateEl.textContent = active ? 'Active' : 'Idle';
+  stateEl.className = 'state-value ' + (active ? 'active' : 'idle');
+  if (!active) {
+    sessionStartTime = null;
+    if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
+  }
+}
+
+// Refresh available serial ports
+async function refreshPorts() {
+  try {
+    const ports = await fetch('/api/ports').then(r => r.json());
+    const current = portSelect.value;
+    portSelect.innerHTML = '<option value="">— select port —</option>';
+    ports.forEach(p => {
+      const opt = document.createElement('option');
+      opt.value = p.path;
+      opt.textContent = p.path + (p.manufacturer ? ` (${p.manufacturer})` : '');
+      portSelect.appendChild(opt);
+    });
+    if (current) portSelect.value = current;
+  } catch (e) {
+    console.warn('[Ports] Failed to list:', e);
+  }
+}
+
+// Connect via serial
+connectBtn.addEventListener('click', async () => {
+  const port = portSelect.value;
+  if (!port) { alert('Select a serial port first.'); return; }
+  const baudRate = parseInt(baudInput.value, 10) || 115200;
+  connectBtn.disabled = true;
+  connectBtn.textContent = 'Connecting…';
+  try {
+    const res = await fetch('/api/connect', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ port, baudRate }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Connect failed');
+    // Status update will come via WebSocket
+  } catch (e) {
+    alert('Connection failed: ' + e.message);
+    connectBtn.disabled = false;
+  } finally {
+    connectBtn.textContent = 'Connect';
+  }
+});
+
+// Disconnect
+disconnectBtn.addEventListener('click', async () => {
+  try {
+    await fetch('/api/disconnect', { method: 'POST' });
+  } catch (e) {
+    console.warn('Disconnect error:', e);
+  }
+});
+
+// Connect via WiFi
+wifiConnectBtn.addEventListener('click', async () => {
+  const host = wifiHostInput.value.trim();
+  if (!host) { alert('Enter a host/IP for the WiFi connection.'); return; }
+  // WiFi connection requires server restart — inform user
+  alert('WiFi connection requires starting the server with:\n  npm run dev -- --wifi ' + host + '\n\nRestart the server with that argument.');
+});
+
+// Refresh ports on page load and on button click
+refreshBtn.addEventListener('click', refreshPorts);
+refreshPorts();
+
+// ---- Session Start / Stop --------------------------------------------------
+startBtn.addEventListener('click', async () => {
+  startBtn.disabled = true;
+  try {
+    const res = await fetch('/api/session/start', { method: 'POST' });
+    if (!res.ok) {
+      const d = await res.json();
+      throw new Error(d.error || 'Start failed');
+    }
+    setSessionActive(true);
+    swayChart.clear();
+    forceChart.clear();
+    swayChart.draw();
+    forceChart.draw();
+  } catch (e) {
+    alert('Could not start session: ' + e.message);
+    startBtn.disabled = false;
+  }
+});
+
+stopBtn.addEventListener('click', async () => {
+  stopBtn.disabled = true;
+  try {
+    const res = await fetch('/api/session/stop', { method: 'POST' });
+    if (!res.ok) {
+      const d = await res.json();
+      throw new Error(d.error || 'Stop failed');
+    }
+    setSessionActive(false);
+  } catch (e) {
+    alert('Could not stop session: ' + e.message);
+    stopBtn.disabled = false;
+  }
+});
+
+// ---- Session history -------------------------------------------------------
 function addSessionRow(session, isNew = false) {
   const tbody = document.getElementById('session-tbody');
   const row   = document.createElement('tr');
@@ -152,15 +297,14 @@ function addSessionRow(session, isNew = false) {
   const score    = session.finalMetrics.balanceScore.toFixed(0);
   const id       = session.id;
 
-  // CSV links — available immediately for new sessions, checked from _csvFiles for loaded history
   const hasRaw  = isNew || session._csvFiles?.raw;
   const hasProc = isNew || session._csvFiles?.processed;
 
   const rawLink  = hasRaw
-    ? `<a href="/api/sessions/${id}/csv/raw"       download title="Raw 100Hz IMU data">raw.csv</a>`
+    ? `<a href="/api/sessions/${id}/csv/raw"       download title="Raw force plate data (40Hz)">raw.csv</a>`
     : '<span style="color:#555">—</span>';
   const procLink = hasProc
-    ? `<a href="/api/sessions/${id}/csv/processed" download title="Orientation + metrics time series">processed.csv</a>`
+    ? `<a href="/api/sessions/${id}/csv/processed" download title="COP + metrics time series">processed.csv</a>`
     : '<span style="color:#555">—</span>';
 
   row.innerHTML = `
@@ -174,12 +318,9 @@ function addSessionRow(session, isNew = false) {
   tbody.insertBefore(row, tbody.firstChild);
 }
 
-/** Load history from API on page load. */
 async function loadHistory() {
   try {
-    const res      = await fetch('/api/sessions');
-    const sessions = await res.json();
-    // Load details for each to get _csvFiles flags
+    const sessions = await fetch('/api/sessions').then(r => r.json());
     await Promise.all(sessions.map(async (s) => {
       try {
         const detail = await fetch(`/api/sessions/${s.id}`).then(r => r.json());
@@ -191,7 +332,6 @@ async function loadHistory() {
           _csvFiles: detail._csvFiles ?? {},
         });
       } catch {
-        // Fallback: show row without CSV links
         addSessionRow({ id: s.id, startTime: s.startTime, duration: s.duration, finalMetrics: { balanceScore: s.score } });
       }
     }));
@@ -200,8 +340,8 @@ async function loadHistory() {
   }
 }
 
-// Initialize
-connect();
+// ---- Initialize ------------------------------------------------------------
+connectWS();
 loadHistory();
 swayChart.draw();
-timeSeriesChart.draw();
+forceChart.draw();

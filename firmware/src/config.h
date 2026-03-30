@@ -1,31 +1,49 @@
 #pragma once
 
-// ---- SPI Pin Configuration (VSPI) ----
-#define BMI323_CS_PIN    5
-#define BMI323_SCK_PIN   18
-#define BMI323_MOSI_PIN  23
-#define BMI323_MISO_PIN  19
+// ---------------------------------------------------------------------------
+// HX711 pin assignments — 4 load cell corners
+//
+// Corner layout (viewed from above):
+//   f0 = front-left    f1 = front-right
+//   f2 = back-left     f3 = back-right
+// ---------------------------------------------------------------------------
 
-// ---- SPI Settings ----
-#define BMI323_SPI_SPEED 8000000  // 8 MHz
+#define HX711_DOUT_0  16    // Front-left  DATA
+#define HX711_CLK_0    4    // Front-left  CLK
 
-// ---- Sampling ----
-#define SAMPLE_RATE_HZ   100
-#define SAMPLE_PERIOD_US  (1000000 / SAMPLE_RATE_HZ)
+#define HX711_DOUT_1  17    // Front-right DATA
+#define HX711_CLK_1    5    // Front-right CLK
 
-// ---- Serial ----
-#define SERIAL_BAUD_RATE  460800
+#define HX711_DOUT_2  25    // Back-left   DATA
+#define HX711_CLK_2   18    // Back-left   CLK
 
-// ---- WiFi TCP streaming ----
-// The ESP32 listens on this port for one TCP client at a time.
-// Connect from the laptop with: pnpm --filter local-server dev -- --wifi imu-balance.local
+#define HX711_DOUT_3  26    // Back-right  DATA
+#define HX711_CLK_3   19    // Back-right  CLK
+
+// ---------------------------------------------------------------------------
+// Sampling
+// ---------------------------------------------------------------------------
+
+// HX711 RATE pin tied HIGH → 80 SPS hardware rate.
+// We target 40 Hz in firmware to allow for processing headroom.
+#define SAMPLE_RATE_HZ   40
+#define SAMPLE_PERIOD_US (1000000 / SAMPLE_RATE_HZ)   // 25 000 µs
+
+// ---------------------------------------------------------------------------
+// Serial
+// ---------------------------------------------------------------------------
+#define SERIAL_BAUD  115200
+
+// ---------------------------------------------------------------------------
+// WiFi / TCP (optional)
+// ---------------------------------------------------------------------------
 #define WIFI_TCP_PORT    8888
-#define WIFI_HOSTNAME    "imu-balance"   // reachable as imu-balance.local via mDNS
+#define WIFI_HOSTNAME    "force-plate"   // reachable as force-plate.local via mDNS
 
-// ---- BMI323 Ranges ----
-#define ACCEL_RANGE_G     4.0f    // +/- 4g
-#define GYRO_RANGE_DPS    2000.0f // +/- 2000 deg/s
-
-// ---- BMI323 Scale Factors ----
-#define ACCEL_SCALE  (ACCEL_RANGE_G / 32768.0f)
-#define GYRO_SCALE   (GYRO_RANGE_DPS / 32768.0f)
+// ---------------------------------------------------------------------------
+// Force plate geometry
+// ---------------------------------------------------------------------------
+// Straight-line distance between left and right cell mounting points (mm)
+#define PLATE_WIDTH_MM   500
+// Straight-line distance between front and back cell mounting points (mm)
+#define PLATE_HEIGHT_MM  500

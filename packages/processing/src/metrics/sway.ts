@@ -1,8 +1,8 @@
 /**
  * Sway metrics: RMS magnitude, path length, and velocity.
  *
- * These are the most fundamental posturography measures, analogous to
- * Center of Pressure (COP) displacement and velocity from force plates.
+ * These are the standard posturography measures for Center of Pressure (COP)
+ * displacement and velocity from force plate data.
  *
  * References:
  * - Prieto et al. (1996): Measures of postural steadiness
@@ -11,47 +11,47 @@
  */
 
 /**
- * Compute RMS sway magnitude from roll and pitch arrays.
+ * Compute RMS COP displacement from center.
  *
- * θ_RMS = √(mean(θx² + θy²))
+ * COP_RMS = √(mean(copX² + copY²))
  *
  * Higher values indicate greater overall instability.
  *
- * @param roll Array of roll angles (degrees)
- * @param pitch Array of pitch angles (degrees)
- * @returns RMS sway magnitude in degrees
+ * @param copX Array of COP X positions (mm)
+ * @param copY Array of COP Y positions (mm)
+ * @returns RMS COP displacement in mm
  */
-export function computeSwayRMS(roll: number[], pitch: number[]): number {
-  const n = roll.length;
+export function computeSwayRMS(copX: number[], copY: number[]): number {
+  const n = copX.length;
   if (n === 0) return 0;
 
   let sumSq = 0;
   for (let i = 0; i < n; i++) {
-    sumSq += roll[i] * roll[i] + pitch[i] * pitch[i];
+    sumSq += copX[i] * copX[i] + copY[i] * copY[i];
   }
 
   return Math.sqrt(sumSq / n);
 }
 
 /**
- * Compute sway path length from roll and pitch arrays.
+ * Compute COP path length.
  *
- * L = Σ √(Δθx² + Δθy²)
+ * L = Σ √(ΔcX² + ΔcY²)
  *
- * Equivalent to COP path length. One of the most sensitive balance metrics.
+ * One of the most sensitive balance metrics.
  *
- * @param roll Array of roll angles (degrees)
- * @param pitch Array of pitch angles (degrees)
- * @returns Total path length in degrees
+ * @param copX Array of COP X positions (mm)
+ * @param copY Array of COP Y positions (mm)
+ * @returns Total path length in mm
  */
-export function computePathLength(roll: number[], pitch: number[]): number {
-  const n = roll.length;
+export function computePathLength(copX: number[], copY: number[]): number {
+  const n = copX.length;
   if (n < 2) return 0;
 
   let length = 0;
   for (let i = 1; i < n; i++) {
-    const dx = roll[i] - roll[i - 1];
-    const dy = pitch[i] - pitch[i - 1];
+    const dx = copX[i] - copX[i - 1];
+    const dy = copY[i] - copY[i - 1];
     length += Math.sqrt(dx * dx + dy * dy);
   }
 
@@ -59,15 +59,15 @@ export function computePathLength(roll: number[], pitch: number[]): number {
 }
 
 /**
- * Compute mean sway velocity.
+ * Compute mean COP velocity.
  *
  * V = L / T
  *
  * Higher velocity indicates more rapid corrections (instability).
  *
- * @param pathLength Total sway path length
+ * @param pathLength Total COP path length (mm)
  * @param durationSeconds Window duration in seconds
- * @returns Mean velocity in degrees/second
+ * @returns Mean velocity in mm/s
  */
 export function computeSwayVelocity(pathLength: number, durationSeconds: number): number {
   if (durationSeconds <= 0) return 0;

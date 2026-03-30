@@ -1,52 +1,32 @@
-/** Raw IMU data frame from the ESP32 serial stream */
-export interface RawIMUData {
+/** Raw force data frame from the ESP32 serial stream (4 HX711 load cells) */
+export interface RawForceData {
   /** Timestamp in milliseconds (from ESP32 millis()) */
   t: number;
-  /** Accelerometer X (g) */
-  ax: number;
-  /** Accelerometer Y (g) */
-  ay: number;
-  /** Accelerometer Z (g) */
-  az: number;
-  /** Gyroscope X (deg/s) */
-  gx: number;
-  /** Gyroscope Y (deg/s) */
-  gy: number;
-  /** Gyroscope Z (deg/s) */
-  gz: number;
-}
-
-/** Quaternion representation [w, x, y, z] */
-export interface Quaternion {
-  w: number;
-  x: number;
-  y: number;
-  z: number;
-}
-
-/** Euler angles derived from sensor fusion */
-export interface Orientation {
-  /** Roll angle in degrees (rotation about X axis) */
-  roll: number;
-  /** Pitch angle in degrees (rotation about Y axis) */
-  pitch: number;
+  /** Front-left load cell (raw ADC counts) */
+  f0: number;
+  /** Front-right load cell (raw ADC counts) */
+  f1: number;
+  /** Back-left load cell (raw ADC counts) */
+  f2: number;
+  /** Back-right load cell (raw ADC counts) */
+  f3: number;
 }
 
 /** Balance metrics computed over a sliding window */
 export interface BalanceMetrics {
-  /** RMS of combined sway angle (degrees) */
+  /** RMS of COP distance from center (mm) */
   swayRMS: number;
-  /** Total sway path length (degrees) */
+  /** Total COP path length (mm) */
   pathLength: number;
-  /** Mean sway velocity (degrees/s) */
+  /** Mean COP velocity (mm/s) */
   swayVelocity: number;
-  /** 95% confidence ellipse area (degrees²) */
+  /** 95% confidence ellipse area (mm²) */
   stabilityArea: number;
   /** FFT-based frequency features */
   frequencyFeatures: FrequencyFeatures;
-  /** RMS jerk of angular velocity (deg/s³) */
+  /** RMS jerk of COP velocity (mm/s³) */
   jerkRMS: number;
-  /** Fraction of time within stability threshold (0-1) */
+  /** Fraction of time COP is within stability zone (0-1) */
   timeInZone: number;
   /** Composite balance score (0-100) */
   balanceScore: number;
@@ -60,7 +40,7 @@ export interface FrequencyFeatures {
   meanFrequency: number;
   /** Power in low band <0.5 Hz (natural sway) */
   lowBandPower: number;
-  /** Power in mid band 0.5-1.5 Hz (corrective) */
+  /** Power in mid band 0.5-1.5 Hz (corrective responses) */
   midBandPower: number;
   /** Power in high band >1.5 Hz (tremor/noise) */
   highBandPower: number;
@@ -70,16 +50,21 @@ export interface FrequencyFeatures {
 export interface ProcessedFrame {
   /** Timestamp in ms */
   timestamp: number;
-  /** Raw orientation (before filtering) */
-  roll: number;
-  pitch: number;
-  /** Filtered orientation */
-  rollFiltered: number;
-  pitchFiltered: number;
-  /** Angular velocities (deg/s) */
-  gyroX: number;
-  gyroY: number;
-  gyroZ: number;
+  /** Raw COP X position (mm from center, positive = right) */
+  copX: number;
+  /** Raw COP Y position (mm from center, positive = front) */
+  copY: number;
+  /** Low-pass filtered COP X (mm) */
+  copXFiltered: number;
+  /** Low-pass filtered COP Y (mm) */
+  copYFiltered: number;
+  /** Total vertical force (sum of 4 cells, raw counts) */
+  fz: number;
+  /** Raw corner forces */
+  f0: number;
+  f1: number;
+  f2: number;
+  f3: number;
   /** Metrics (null if not computed this frame) */
   metrics: BalanceMetrics | null;
   /** Current session state */
@@ -101,7 +86,7 @@ export interface Session {
   /** Final aggregated metrics */
   finalMetrics: BalanceMetrics;
   /** Raw data (optional, for replay) */
-  rawData?: RawIMUData[];
+  rawData?: RawForceData[];
   /** Processed time series (optional, for visualization) */
   timeSeries?: ProcessedFrame[];
 }
@@ -110,11 +95,9 @@ export interface Session {
 export interface PipelineConfig {
   /** Sample rate in Hz */
   sampleRate: number;
-  /** Madgwick filter beta parameter */
-  madgwickBeta: number;
   /** Low-pass filter cutoff frequency in Hz */
   lpfCutoff: number;
-  /** Stability zone threshold in degrees */
+  /** Stability zone threshold in mm (COP radius) */
   stabilityThreshold: number;
   /** Metrics computation interval (every N samples) */
   metricsInterval: number;
@@ -122,6 +105,13 @@ export interface PipelineConfig {
   metricsWindowSize: number;
   /** Balance score weights */
   scoreWeights: ScoreWeights;
+  /** Force plate width in mm (distance between left and right cells) */
+  plateWidth: number;
+  /** Force plate height in mm (distance between front and back cells) */
+  plateHeight: number;
+  /** Warmup duration in ms — data at start of session is buffered but metrics
+   *  are suppressed until warmup completes (removes step-on artifact) */
+  warmupMs: number;
 }
 
 /** Weights for composite balance score */
@@ -135,12 +125,14 @@ export interface ScoreWeights {
 
 /** Default pipeline configuration */
 export const DEFAULT_CONFIG: PipelineConfig = {
-  sampleRate: 100,
-  madgwickBeta: 0.1,
+  sampleRate: 40,
   lpfCutoff: 5.0,
-  stabilityThreshold: 3.0,  // degrees
-  metricsInterval: 10,       // every 10 samples = 10Hz
-  metricsWindowSize: 1000,   // 10 seconds at 100Hz
+  stabilityThreshold: 10.0,  // mm from center
+  metricsInterval: 4,         // every 4 samples = 10 Hz at 40 Hz sample rate
+  metricsWindowSize: 400,     // 10 seconds at 40 Hz
+  plateWidth: 500,            // mm
+  plateHeight: 500,           // mm
+  warmupMs: 2000,             // 2 second warmup to discard step-on artifact
   scoreWeights: {
     swayRMS: 0.25,
     swayVelocity: 0.20,

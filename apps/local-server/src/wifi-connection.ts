@@ -6,20 +6,20 @@
  * the same processing pipeline.
  *
  * Usage:
- *   pnpm --filter local-server dev -- --wifi              # auto imu-balance.local
+ *   pnpm --filter local-server dev -- --wifi              # auto force-plate.local
  *   pnpm --filter local-server dev -- --wifi 192.168.1.42
- *   pnpm --filter local-server dev -- --wifi imu-balance.local
+ *   pnpm --filter local-server dev -- --wifi force-plate.local
  */
 
 import net from 'net';
-import { parseSerialLine, isStatusMessage, RawIMUData } from '@imu-balance/processing';
+import { parseSerialLine, isStatusMessage, RawForceData } from '@force-plate/processing';
 
 export interface WifiConfig {
   host: string;
   port: number;
 }
 
-type DataCallback   = (data: RawIMUData) => void;
+type DataCallback   = (data: RawForceData) => void;
 type StatusCallback = (status: Record<string, unknown>) => void;
 type ErrorCallback  = (error: Error) => void;
 
@@ -32,7 +32,7 @@ export class WifiConnection {
   private reconnectTimeout?: ReturnType<typeof setTimeout>;
   private destroyed = false;
 
-  constructor(private config: WifiConfig = { host: 'imu-balance.local', port: 8888 }) {}
+  constructor(private config: WifiConfig = { host: 'force-plate.local', port: 8888 }) {}
 
   setDataHandler(handler: DataCallback):   void { this.onData   = handler; }
   setStatusHandler(handler: StatusCallback): void { this.onStatus = handler; }
@@ -59,7 +59,6 @@ export class WifiConnection {
     socket.on('data', (chunk: Buffer) => {
       this.lineBuffer += chunk.toString('utf8');
 
-      // Split on newlines and process each complete line
       let newlineIdx: number;
       while ((newlineIdx = this.lineBuffer.indexOf('\n')) !== -1) {
         const line = this.lineBuffer.slice(0, newlineIdx).trim();
@@ -84,12 +83,18 @@ export class WifiConnection {
     });
 
     socket.on('error', (err: Error) => {
-      // ECONNREFUSED / ENOTFOUND are expected while ESP32 isn't up yet
       const quiet = (err as NodeJS.ErrnoException).code === 'ECONNREFUSED' ||
                     (err as NodeJS.ErrnoException).code === 'ENOTFOUND';
       if (!quiet) this.onError?.(err);
       socket.destroy();
     });
+  }
+
+  /** Send a command string to the ESP32 (e.g. "start\n" or "stop\n"). */
+  write(data: string): void {
+    if (this.socket && !this.socket.destroyed) {
+      this.socket.write(data);
+    }
   }
 
   /** Cleanly close the connection (no reconnect). */

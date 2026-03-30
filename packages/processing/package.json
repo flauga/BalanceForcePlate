@@ -1,7 +1,7 @@
 {
-  "name": "@imu-balance/processing",
+  "name": "@force-plate/processing",
   "version": "1.0.0",
-  "description": "Signal processing and balance metrics for IMU balance board",
+  "description": "Signal processing and balance metrics for force plate balance assessment",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",

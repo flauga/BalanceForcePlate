@@ -1,7 +1,6 @@
 #include <Arduino.h>
-#include <SPI.h>
 #include "config.h"
-#include "bmi323.h"
+#include "hx711.h"
 
 // WiFi streaming — only enabled when wifi_config.h exists.
 // Copy wifi_config.h.example → wifi_config.h and fill in credentials.
@@ -12,10 +11,19 @@
   static WiFiStream wifiStream(WIFI_TCP_PORT, WIFI_HOSTNAME);
 #endif
 
-BMI323 imu(BMI323_CS_PIN);
+HX711Array sensors(
+  HX711_DOUT_0, HX711_CLK_0,
+  HX711_DOUT_1, HX711_CLK_1,
+  HX711_DOUT_2, HX711_CLK_2,
+  HX711_DOUT_3, HX711_CLK_3
+);
+
 unsigned long lastSampleTime = 0;
 
-// Broadcast a JSON line to all active output channels (Serial + WiFi TCP).
+// Streaming state — controlled by "start\n" / "stop\n" commands from the laptop
+static bool streaming = false;
+
+// Broadcast a JSON line to all active output channels (Serial + optional WiFi TCP).
 static inline void broadcast(const String& line) {
     Serial.println(line);
 #ifdef WIFI_ENABLED
@@ -23,55 +31,80 @@ static inline void broadcast(const String& line) {
 #endif
 }
 
+// Check for incoming commands over Serial or WiFi TCP.
+// Recognised commands: "start" and "stop".
+static void checkCommands() {
+    // Serial command
+    while (Serial.available()) {
+        String cmd = Serial.readStringUntil('\n');
+        cmd.trim();
+        if (cmd == "start") {
+            streaming = true;
+            broadcast("{\"status\":\"streaming\"}");
+        } else if (cmd == "stop") {
+            streaming = false;
+            broadcast("{\"status\":\"idle\"}");
+        }
+    }
+
+#ifdef WIFI_ENABLED
+    // WiFi TCP command — delegated to WiFiStream helper
+    String cmd = wifiStream.readLine();
+    if (cmd.length() > 0) {
+        cmd.trim();
+        if (cmd == "start") {
+            streaming = true;
+            broadcast("{\"status\":\"streaming\"}");
+        } else if (cmd == "stop") {
+            streaming = false;
+            broadcast("{\"status\":\"idle\"}");
+        }
+    }
+#endif
+}
+
 void setup() {
-    Serial.begin(SERIAL_BAUD_RATE);
-    SPI.begin(BMI323_SCK_PIN, BMI323_MISO_PIN, BMI323_MOSI_PIN, BMI323_CS_PIN);
-    delay(500);
+    Serial.begin(SERIAL_BAUD);
+    delay(200);
 
 #ifdef WIFI_ENABLED
     wifiStream.begin(WIFI_SSID, WIFI_PASSWORD);
 #endif
 
-    if (!imu.begin()) {
-        broadcast("{\"status\":\"error\",\"msg\":\"bmi323 init failed\"}");
-        while (true) { delay(1000); }
-    }
+    // Initialize and tare load cells (plate must be unloaded during tare)
+    broadcast("{\"status\":\"initializing\",\"sensor\":\"hx711\"}");
+    sensors.begin();   // configures GPIO + tares all 4 cells
 
-    broadcast("{\"status\":\"ready\",\"sensor\":\"bmi323\",\"rate\":100}");
+    broadcast("{\"status\":\"ready\",\"sensor\":\"hx711\",\"rate\":" + String(SAMPLE_RATE_HZ) + "}");
     lastSampleTime = micros();
 }
 
 void loop() {
 #ifdef WIFI_ENABLED
-    // Accept new TCP clients (non-blocking)
     wifiStream.update();
 #endif
 
+    // Process any incoming start/stop commands
+    checkCommands();
+
+    // Enforce sample rate
     const unsigned long now = micros();
     if (now - lastSampleTime < SAMPLE_PERIOD_US) return;
     lastSampleTime += SAMPLE_PERIOD_US;
 
-    BMI323Data raw;
-    if (!imu.readData(raw)) return;
+    // Only read and send data when streaming is active
+    if (!streaming) return;
 
-    // Scale to physical units
-    const float ax = raw.acc_x * ACCEL_SCALE;
-    const float ay = raw.acc_y * ACCEL_SCALE;
-    const float az = raw.acc_z * ACCEL_SCALE;
-    const float gx = raw.gyr_x * GYRO_SCALE;
-    const float gy = raw.gyr_y * GYRO_SCALE;
-    const float gz = raw.gyr_z * GYRO_SCALE;
+    long f[4];
+    sensors.readAll(f);
 
-    // Build JSON line into a String, then broadcast to all channels
     String json;
     json.reserve(80);
-    json += "{\"t\":";    json += millis();
-    json += ",\"ax\":";   json += String(ax, 4);
-    json += ",\"ay\":";   json += String(ay, 4);
-    json += ",\"az\":";   json += String(az, 4);
-    json += ",\"gx\":";   json += String(gx, 2);
-    json += ",\"gy\":";   json += String(gy, 2);
-    json += ",\"gz\":";   json += String(gz, 2);
+    json += "{\"t\":";   json += millis();
+    json += ",\"f0\":";  json += f[0];
+    json += ",\"f1\":";  json += f[1];
+    json += ",\"f2\":";  json += f[2];
+    json += ",\"f3\":";  json += f[3];
     json += "}";
 
     broadcast(json);

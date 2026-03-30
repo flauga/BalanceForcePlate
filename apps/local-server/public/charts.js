@@ -1,6 +1,6 @@
 /**
- * Chart rendering for the balance board dashboard.
- * Uses HTML5 Canvas for sway trajectory and time series.
+ * Chart rendering for the Balance Force Plate dashboard.
+ * Uses HTML5 Canvas for COP trajectory and force distribution.
  */
 
 class SwayChart {
@@ -9,20 +9,18 @@ class SwayChart {
     this.ctx = this.canvas.getContext('2d');
     this.maxPoints = maxPoints;
     this.points = [];
-    this.range = 10; // degrees, auto-adjusts
+    this.range = 30; // mm, auto-adjusts
   }
 
-  addPoint(roll, pitch) {
-    this.points.push({ x: roll, y: pitch });
+  addPoint(copX, copY) {
+    this.points.push({ x: copX, y: copY });
     if (this.points.length > this.maxPoints) {
       this.points.shift();
     }
 
-    // Auto-adjust range
-    const maxVal = Math.max(
-      ...this.points.map(p => Math.max(Math.abs(p.x), Math.abs(p.y)))
-    );
-    this.range = Math.max(5, Math.ceil(maxVal * 1.2));
+    // Auto-adjust range based on data
+    const maxVal = Math.max(...this.points.map(p => Math.max(Math.abs(p.x), Math.abs(p.y))));
+    this.range = Math.max(20, Math.ceil(maxVal * 1.3 / 10) * 10);
   }
 
   draw() {
@@ -37,37 +35,38 @@ class SwayChart {
     ctx.fillStyle = '#0f1117';
     ctx.fillRect(0, 0, w, h);
 
-    // Grid
+    // Grid — concentric circles every 10mm
     ctx.strokeStyle = '#2a2d3a';
     ctx.lineWidth = 1;
-
-    // Concentric circles
-    for (let r = 2; r <= this.range; r += 2) {
+    for (let r = 10; r <= this.range; r += 10) {
       ctx.beginPath();
       ctx.arc(cx, cy, r * scale, 0, Math.PI * 2);
       ctx.stroke();
+      // Label outermost ring
+      ctx.fillStyle = '#444';
+      ctx.font = '10px sans-serif';
+      ctx.fillText(`${r}mm`, cx + r * scale + 2, cy);
     }
 
     // Crosshairs
+    ctx.strokeStyle = '#2a2d3a';
     ctx.beginPath();
-    ctx.moveTo(0, cy);
-    ctx.lineTo(w, cy);
-    ctx.moveTo(cx, 0);
-    ctx.lineTo(cx, h);
+    ctx.moveTo(0, cy); ctx.lineTo(w, cy);
+    ctx.moveTo(cx, 0); ctx.lineTo(cx, h);
     ctx.stroke();
 
     // Axis labels
-    ctx.fillStyle = '#666';
+    ctx.fillStyle = '#555';
     ctx.font = '11px sans-serif';
-    ctx.fillText('Roll', w - 30, cy - 5);
-    ctx.fillText('Pitch', cx + 5, 15);
+    ctx.fillText('Right (+X)', w - 68, cy - 6);
+    ctx.fillText('Front (+Y)', cx + 5, 14);
 
-    // Stability zone circle
+    // Stability zone circle (10mm radius default)
     ctx.strokeStyle = '#166534';
     ctx.lineWidth = 2;
     ctx.setLineDash([5, 5]);
     ctx.beginPath();
-    ctx.arc(cx, cy, 3 * scale, 0, Math.PI * 2); // 3 degree threshold
+    ctx.arc(cx, cy, 10 * scale, 0, Math.PI * 2);
     ctx.stroke();
     ctx.setLineDash([]);
 
@@ -80,11 +79,11 @@ class SwayChart {
       ctx.strokeStyle = `rgba(96, 165, 250, ${alpha * 0.8})`;
       ctx.beginPath();
       ctx.moveTo(cx + this.points[i - 1].x * scale, cy - this.points[i - 1].y * scale);
-      ctx.lineTo(cx + this.points[i].x * scale, cy - this.points[i].y * scale);
+      ctx.lineTo(cx + this.points[i].x * scale,     cy - this.points[i].y * scale);
       ctx.stroke();
     }
 
-    // Current point
+    // Current position dot
     const last = this.points[this.points.length - 1];
     ctx.fillStyle = '#60a5fa';
     ctx.beginPath();
@@ -94,105 +93,161 @@ class SwayChart {
 
   clear() {
     this.points = [];
+    this.range = 30;
   }
 }
 
-class TimeSeriesChart {
-  constructor(canvasId, maxPoints = 500) {
+/**
+ * ForceDistributionChart — shows real-time force on each of the 4 corners
+ * plus total Fz, using a bar chart.
+ */
+class ForceDistributionChart {
+  constructor(canvasId, historyLength = 200) {
     this.canvas = document.getElementById(canvasId);
     this.ctx = this.canvas.getContext('2d');
-    this.maxPoints = maxPoints;
-    this.rollData = [];
-    this.pitchData = [];
-    this.range = 10;
+    this.historyLength = historyLength;
+    // Rolling history for each sensor
+    this.history = [[], [], [], []];
+    this.fzHistory = [];
+    this.maxForce = 1000; // auto-adjusts
+    this.labels = ['FL', 'FR', 'BL', 'BR'];
+    this.colors = ['#60a5fa', '#4ade80', '#f472b6', '#fbbf24'];
   }
 
-  addPoint(roll, pitch) {
-    this.rollData.push(roll);
-    this.pitchData.push(pitch);
-    if (this.rollData.length > this.maxPoints) {
-      this.rollData.shift();
-      this.pitchData.shift();
-    }
+  addReading(f0, f1, f2, f3) {
+    const values = [f0, f1, f2, f3];
+    const fz = f0 + f1 + f2 + f3;
 
-    const maxVal = Math.max(
-      ...this.rollData.map(Math.abs),
-      ...this.pitchData.map(Math.abs)
-    );
-    this.range = Math.max(5, Math.ceil(maxVal * 1.2));
+    for (let i = 0; i < 4; i++) {
+      this.history[i].push(values[i]);
+      if (this.history[i].length > this.historyLength) this.history[i].shift();
+    }
+    this.fzHistory.push(fz);
+    if (this.fzHistory.length > this.historyLength) this.fzHistory.shift();
+
+    const max = Math.max(fz, this.maxForce);
+    this.maxForce = Math.max(1000, Math.ceil(max / 10000) * 10000);
   }
 
   draw() {
     const { ctx, canvas } = this;
     const w = canvas.width;
     const h = canvas.height;
-    const padding = { top: 20, right: 20, bottom: 30, left: 50 };
-    const plotW = w - padding.left - padding.right;
-    const plotH = h - padding.top - padding.bottom;
-    const cy = padding.top + plotH / 2;
+    const pad = { top: 30, right: 20, bottom: 50, left: 60 };
+    const plotW = w - pad.left - pad.right;
+    const plotH = h - pad.top - pad.bottom;
 
     // Clear
     ctx.fillStyle = '#0f1117';
     ctx.fillRect(0, 0, w, h);
 
-    // Y axis grid and labels
-    ctx.strokeStyle = '#2a2d3a';
-    ctx.fillStyle = '#666';
-    ctx.font = '11px sans-serif';
-    ctx.lineWidth = 1;
+    // Get last values
+    const lastVals = this.history.map(arr => arr[arr.length - 1] || 0);
+    const fz = lastVals.reduce((a, b) => a + b, 0);
+    const maxBar = Math.max(this.maxForce, fz);
 
-    const ySteps = 5;
-    for (let i = -ySteps; i <= ySteps; i++) {
-      const val = (i / ySteps) * this.range;
-      const y = cy - (val / this.range) * (plotH / 2);
+    // --- Left panel: bar chart of 4 corners ---
+    const barW = 60;
+    const barGap = 20;
+    const totalBarsW = 4 * barW + 3 * barGap;
+    const barStartX = pad.left + (plotW * 0.4 - totalBarsW) / 2;
+    const barBaseY = pad.top + plotH;
+
+    // Y grid
+    ctx.strokeStyle = '#2a2d3a';
+    ctx.lineWidth = 1;
+    ctx.fillStyle = '#555';
+    ctx.font = '10px sans-serif';
+    const yTicks = 4;
+    for (let i = 0; i <= yTicks; i++) {
+      const val = (i / yTicks) * maxBar;
+      const y = barBaseY - (val / maxBar) * plotH;
       ctx.beginPath();
-      ctx.moveTo(padding.left, y);
-      ctx.lineTo(w - padding.right, y);
+      ctx.moveTo(pad.left, y);
+      ctx.lineTo(pad.left + plotW * 0.45, y);
       ctx.stroke();
-      ctx.fillText(val.toFixed(0) + '°', 5, y + 4);
+      ctx.fillText(val > 999 ? (val / 1000).toFixed(0) + 'k' : val.toFixed(0), 5, y + 4);
     }
 
-    // Zero line
-    ctx.strokeStyle = '#444';
-    ctx.beginPath();
-    ctx.moveTo(padding.left, cy);
-    ctx.lineTo(w - padding.right, cy);
-    ctx.stroke();
+    // Bars
+    for (let i = 0; i < 4; i++) {
+      const x = barStartX + i * (barW + barGap);
+      const barH = maxBar > 0 ? (lastVals[i] / maxBar) * plotH : 0;
+      const y = barBaseY - barH;
 
-    // Draw data
-    const n = this.rollData.length;
-    if (n < 2) return;
+      // Bar fill
+      ctx.fillStyle = this.colors[i];
+      ctx.globalAlpha = 0.85;
+      ctx.fillRect(x, y, barW, barH);
+      ctx.globalAlpha = 1;
 
-    const drawLine = (data, color) => {
-      ctx.strokeStyle = color;
+      // Bar border
+      ctx.strokeStyle = this.colors[i];
+      ctx.lineWidth = 1.5;
+      ctx.strokeRect(x, y, barW, barH);
+
+      // Label
+      ctx.fillStyle = this.colors[i];
+      ctx.font = 'bold 13px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(this.labels[i], x + barW / 2, barBaseY + 16);
+
+      // Percentage
+      const pct = fz > 0 ? ((lastVals[i] / fz) * 100).toFixed(0) : '0';
+      ctx.fillStyle = '#aaa';
+      ctx.font = '11px sans-serif';
+      ctx.fillText(pct + '%', x + barW / 2, barBaseY + 30);
+    }
+    ctx.textAlign = 'left';
+
+    // Title
+    ctx.fillStyle = '#888';
+    ctx.font = '11px sans-serif';
+    ctx.fillText('Corner Forces', pad.left, pad.top - 10);
+
+    // --- Right panel: Fz time series ---
+    const tsX = pad.left + plotW * 0.5;
+    const tsW = plotW * 0.5;
+
+    ctx.fillStyle = '#555';
+    ctx.font = '11px sans-serif';
+    ctx.fillText('Total Force (Fz)', tsX + 4, pad.top - 10);
+
+    ctx.strokeStyle = '#2a2d3a';
+    ctx.lineWidth = 1;
+    for (let i = 0; i <= yTicks; i++) {
+      const val = (i / yTicks) * maxBar;
+      const y = barBaseY - (val / maxBar) * plotH;
+      ctx.beginPath();
+      ctx.moveTo(tsX, y);
+      ctx.lineTo(tsX + tsW, y);
+      ctx.stroke();
+    }
+
+    const n = this.fzHistory.length;
+    if (n >= 2) {
+      ctx.strokeStyle = '#a78bfa';
       ctx.lineWidth = 1.5;
       ctx.beginPath();
       for (let i = 0; i < n; i++) {
-        const x = padding.left + (i / (this.maxPoints - 1)) * plotW;
-        const y = cy - (data[i] / this.range) * (plotH / 2);
+        const x = tsX + (i / (this.historyLength - 1)) * tsW;
+        const y = barBaseY - (this.fzHistory[i] / maxBar) * plotH;
         if (i === 0) ctx.moveTo(x, y);
         else ctx.lineTo(x, y);
       }
       ctx.stroke();
-    };
+    }
 
-    drawLine(this.rollData, '#60a5fa');   // Blue for roll
-    drawLine(this.pitchData, '#f472b6');  // Pink for pitch
-
-    // Legend
-    ctx.fillStyle = '#60a5fa';
-    ctx.fillRect(padding.left + 10, padding.top + 5, 12, 3);
-    ctx.fillStyle = '#888';
-    ctx.fillText('Roll', padding.left + 28, padding.top + 10);
-
-    ctx.fillStyle = '#f472b6';
-    ctx.fillRect(padding.left + 80, padding.top + 5, 12, 3);
-    ctx.fillStyle = '#888';
-    ctx.fillText('Pitch', padding.left + 98, padding.top + 10);
+    // Fz value label
+    ctx.fillStyle = '#a78bfa';
+    ctx.font = 'bold 13px sans-serif';
+    const fzDisplay = fz > 999 ? (fz / 1000).toFixed(1) + 'k' : fz.toFixed(0);
+    ctx.fillText('Fz: ' + fzDisplay, tsX + 6, pad.top + 14);
   }
 
   clear() {
-    this.rollData = [];
-    this.pitchData = [];
+    this.history = [[], [], [], []];
+    this.fzHistory = [];
+    this.maxForce = 1000;
   }
 }
