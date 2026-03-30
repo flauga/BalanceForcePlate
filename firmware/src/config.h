@@ -39,10 +39,13 @@
 #define OFFLOAD_DEBOUNCE_MS   1000   // hold below threshold this long before returning to IDLE
 
 // ---- Ring Buffer ----
-// Holds up to 512 packets of 22 bytes = ~11 KB.
-// At 50 Hz this covers 10.2 seconds of UDP outage before oldest packets are dropped.
+// RINGBUF_TYPE_NOSPLIT adds an 8-byte header per item and pads data to 4-byte
+// alignment: each 22-byte packet consumes 8 + ceil(22/4)*4 = 8 + 24 = 32 bytes.
+// Size the buffer as 512 × 32 = 16 384 bytes to get a true 512-item capacity.
+// At 50 Hz this covers 10.2 seconds of UDP outage before oldest packets drop.
 #define RING_BUFFER_ITEMS  512
-#define RING_BUFFER_SIZE   (RING_BUFFER_ITEMS * 22)
+#define RING_BUFFER_ITEM_BYTES  32    // 8 B header + 24 B padded payload
+#define RING_BUFFER_SIZE   (RING_BUFFER_ITEMS * RING_BUFFER_ITEM_BYTES)  // 16 384
 
 // ---- Serial (debug only) ----
 #define SERIAL_BAUD_RATE  115200
