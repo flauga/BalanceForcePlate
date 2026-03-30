@@ -3,20 +3,20 @@
  *
  * Stores completed balance sessions as:
  *   <id>.json        — session metadata + metrics (no raw data, small)
- *   <id>-raw.csv     — raw 100Hz IMU samples (re-processable)
+ *   <id>-raw.csv     — raw 40Hz force plate samples (re-processable)
  *   <id>-processed.csv — orientation + metrics time series (analysis-ready)
  */
 
 import { writeFileSync, readFileSync, readdirSync, existsSync, mkdirSync } from 'fs';
 import { join } from 'path';
 import { homedir } from 'os';
-import { Session, sessionToRawCSV, sessionToProcessedCSV } from '@imu-balance/processing';
+import { Session, sessionToRawCSV, sessionToProcessedCSV } from '@force-plate/processing';
 
 export class SessionStore {
   private storePath: string;
 
   constructor(storePath?: string) {
-    this.storePath = storePath || join(homedir(), '.imu-balance', 'sessions');
+    this.storePath = storePath || join(homedir(), '.force-plate', 'sessions');
     mkdirSync(this.storePath, { recursive: true });
   }
 

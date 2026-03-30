@@ -1,9 +1,9 @@
 /**
- * WebSocket server for broadcasting processed IMU data to browser clients.
+ * WebSocket server for broadcasting processed force plate data to browser clients.
  */
 
 import { WebSocketServer, WebSocket } from 'ws';
-import { ProcessedFrame, Session } from '@imu-balance/processing';
+import { ProcessedFrame, Session } from '@force-plate/processing';
 
 export class WsBroadcaster {
   private wss: WebSocketServer;
@@ -24,21 +24,14 @@ export class WsBroadcaster {
 
   /** Broadcast a processed frame to all connected clients */
   broadcastFrame(frame: ProcessedFrame): void {
-    const message = JSON.stringify({
-      type: 'frame',
-      data: frame,
-    });
-
+    const message = JSON.stringify({ type: 'frame', data: frame });
     this.wss.clients.forEach((client) => {
-      if (client.readyState === WebSocket.OPEN) {
-        client.send(message);
-      }
+      if (client.readyState === WebSocket.OPEN) client.send(message);
     });
   }
 
   /** Broadcast a session completion event */
   broadcastSessionEnd(session: Session): void {
-    // Send session without raw data to keep message size reasonable
     const summary = {
       id: session.id,
       startTime: session.startTime,
@@ -46,40 +39,21 @@ export class WsBroadcaster {
       duration: session.duration,
       finalMetrics: session.finalMetrics,
     };
-
-    const message = JSON.stringify({
-      type: 'session_end',
-      data: summary,
-    });
-
+    const message = JSON.stringify({ type: 'session_end', data: summary });
     this.wss.clients.forEach((client) => {
-      if (client.readyState === WebSocket.OPEN) {
-        client.send(message);
-      }
+      if (client.readyState === WebSocket.OPEN) client.send(message);
     });
   }
 
-  /** Broadcast connection status */
+  /** Broadcast connection/ESP status */
   broadcastStatus(status: Record<string, unknown>): void {
-    const message = JSON.stringify({
-      type: 'status',
-      data: status,
-    });
-
+    const message = JSON.stringify({ type: 'status', data: status });
     this.wss.clients.forEach((client) => {
-      if (client.readyState === WebSocket.OPEN) {
-        client.send(message);
-      }
+      if (client.readyState === WebSocket.OPEN) client.send(message);
     });
   }
 
-  /** Get number of connected clients */
-  getClientCount(): number {
-    return this.wss.clients.size;
-  }
+  getClientCount(): number { return this.wss.clients.size; }
 
-  /** Close the WebSocket server */
-  close(): void {
-    this.wss.close();
-  }
+  close(): void { this.wss.close(); }
 }

@@ -3,42 +3,74 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>IMU Balance Board - Dashboard</title>
+    <title>Balance Force Plate - Dashboard</title>
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
     <header>
-        <h1>IMU Balance Board</h1>
-        <div id="esp32-status" class="esp32-status"></div>
-        <div id="connection-status" class="status disconnected">Disconnected</div>
+        <h1>Balance Force Plate</h1>
+        <div id="esp-status" class="esp-status">Not connected</div>
+        <div id="ws-status" class="status disconnected">Server disconnected</div>
     </header>
 
     <main>
-        <!-- Top row: Score + Timer + Session State -->
-        <section class="top-bar">
-            <div class="score-display">
-                <div class="score-label">Balance Score</div>
-                <div id="balance-score" class="score-value">--</div>
+        <!-- ESP Connection Panel -->
+        <section class="connection-panel">
+            <div class="connection-panel-title">ESP32 Connection</div>
+            <div class="connection-row">
+                <div class="conn-group">
+                    <label class="conn-label">Serial Port</label>
+                    <div class="conn-row-inline">
+                        <select id="port-select" class="conn-input" style="min-width:160px">
+                            <option value="">— select port —</option>
+                        </select>
+                        <button id="refresh-ports-btn" class="btn btn-secondary btn-sm">↻ Refresh</button>
+                        <input id="baud-input" type="number" class="conn-input" value="115200" style="width:100px" title="Baud rate">
+                        <button id="connect-btn" class="btn btn-connect">Connect</button>
+                        <button id="disconnect-btn" class="btn btn-disconnect" disabled>Disconnect</button>
+                    </div>
+                </div>
+                <div class="conn-divider">or</div>
+                <div class="conn-group">
+                    <label class="conn-label">WiFi (TCP)</label>
+                    <div class="conn-row-inline">
+                        <input id="wifi-host" type="text" class="conn-input" placeholder="192.168.x.x or force-plate.local" style="width:220px">
+                        <input id="wifi-port" type="number" class="conn-input" value="8888" style="width:80px" title="TCP port">
+                        <button id="wifi-connect-btn" class="btn btn-connect">Connect</button>
+                    </div>
+                </div>
             </div>
-            <div class="timer-display">
-                <div class="timer-label">Session Time</div>
-                <div id="session-timer" class="timer-value">0:00</div>
-            </div>
-            <div class="state-display">
-                <div class="state-label">State</div>
-                <div id="session-state" class="state-value idle">Idle</div>
+        </section>
+
+        <!-- Session Control -->
+        <section class="session-control">
+            <button id="start-btn" class="btn btn-start" disabled>▶ Start Session</button>
+            <button id="stop-btn"  class="btn btn-stop"  disabled>■ Stop Session</button>
+            <div class="session-info">
+                <div class="info-item">
+                    <span class="info-label">State</span>
+                    <span id="session-state" class="state-value idle">Idle</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Duration</span>
+                    <span id="session-timer" class="timer-value">0:00</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Balance Score</span>
+                    <span id="balance-score" class="score-value">--</span>
+                </div>
             </div>
         </section>
 
         <!-- Charts row -->
         <section class="charts-row">
             <div class="chart-container">
-                <h3>Sway Trajectory</h3>
+                <h3>COP Trajectory</h3>
                 <canvas id="sway-canvas" width="400" height="400"></canvas>
             </div>
             <div class="chart-container">
-                <h3>Roll / Pitch</h3>
-                <canvas id="timeseries-canvas" width="600" height="400"></canvas>
+                <h3>Force Distribution</h3>
+                <canvas id="force-canvas" width="600" height="400"></canvas>
             </div>
         </section>
 
@@ -47,27 +79,27 @@
             <div class="metric-card">
                 <div class="metric-label">Sway RMS</div>
                 <div id="metric-sway-rms" class="metric-value">--</div>
-                <div class="metric-unit">deg</div>
+                <div class="metric-unit">mm</div>
             </div>
             <div class="metric-card">
                 <div class="metric-label">Path Length</div>
                 <div id="metric-path-length" class="metric-value">--</div>
-                <div class="metric-unit">deg</div>
+                <div class="metric-unit">mm</div>
             </div>
             <div class="metric-card">
                 <div class="metric-label">Sway Velocity</div>
                 <div id="metric-velocity" class="metric-value">--</div>
-                <div class="metric-unit">deg/s</div>
+                <div class="metric-unit">mm/s</div>
             </div>
             <div class="metric-card">
                 <div class="metric-label">Stability Area</div>
                 <div id="metric-area" class="metric-value">--</div>
-                <div class="metric-unit">deg&sup2;</div>
+                <div class="metric-unit">mm&sup2;</div>
             </div>
             <div class="metric-card">
                 <div class="metric-label">Jerk RMS</div>
                 <div id="metric-jerk" class="metric-value">--</div>
-                <div class="metric-unit">deg/s&sup3;</div>
+                <div class="metric-unit">mm/s&sup3;</div>
             </div>
             <div class="metric-card">
                 <div class="metric-label">Time in Zone</div>

@@ -6,27 +6,31 @@
  *
  * Score = Σ(wi × normalized_metric_i) × 100
  *
- * Lower sway RMS, velocity, stability area, and jerk contribute positively.
+ * Lower COP RMS, velocity, stability area, and jerk contribute positively.
  * Higher time-in-zone contributes positively.
+ *
+ * Normalization centers are tuned for typical standing balance on a force plate:
+ *   - COP RMS ~5-15 mm for normal adults
+ *   - COP velocity ~10-30 mm/s
+ *   - Stability area ~200-800 mm²
  */
 
 import { BalanceMetrics, ScoreWeights } from '../types.js';
 
-/** Default normalization parameters (tuned from typical balance board data) */
+/** Normalization parameters tuned for force plate COP data */
 const NORM_PARAMS = {
-  /** RMS sway: 0° = perfect, ~5° = poor */
-  swayRMS: { center: 2.5, scale: 1.5 },
-  /** Sway velocity: 0°/s = perfect, ~10°/s = poor */
-  swayVelocity: { center: 5.0, scale: 3.0 },
-  /** Stability area: 0 = perfect, ~50 deg² = poor */
-  stabilityArea: { center: 25.0, scale: 15.0 },
-  /** Jerk RMS: 0 = perfect, ~500 = poor */
-  jerkRMS: { center: 250, scale: 150 },
+  /** COP RMS: 0 mm = perfect, ~20 mm = poor */
+  swayRMS: { center: 10.0, scale: 6.0 },
+  /** COP velocity: 0 mm/s = perfect, ~40 mm/s = poor */
+  swayVelocity: { center: 20.0, scale: 12.0 },
+  /** Stability area: 0 mm² = perfect, ~1000 mm² = poor */
+  stabilityArea: { center: 500.0, scale: 300.0 },
+  /** Jerk RMS: 0 = perfect, ~2000 mm/s³ = poor */
+  jerkRMS: { center: 1000, scale: 600 },
 };
 
 /**
  * Sigmoid normalization: maps a value to [0, 1] where lower input = higher output.
- * Uses a logistic function: 1 / (1 + exp((x - center) / scale))
  */
 function sigmoidNormInverse(value: number, center: number, scale: number): number {
   return 1.0 / (1.0 + Math.exp((value - center) / scale));
@@ -43,25 +47,22 @@ export function computeBalanceScore(
   metrics: Pick<BalanceMetrics, 'swayRMS' | 'swayVelocity' | 'stabilityArea' | 'jerkRMS' | 'timeInZone'>,
   weights: ScoreWeights,
 ): number {
-  // Normalize each metric to 0-1 (higher = better)
-  const normSwayRMS = sigmoidNormInverse(metrics.swayRMS, NORM_PARAMS.swayRMS.center, NORM_PARAMS.swayRMS.scale);
-  const normVelocity = sigmoidNormInverse(metrics.swayVelocity, NORM_PARAMS.swayVelocity.center, NORM_PARAMS.swayVelocity.scale);
-  const normArea = sigmoidNormInverse(metrics.stabilityArea, NORM_PARAMS.stabilityArea.center, NORM_PARAMS.stabilityArea.scale);
-  const normJerk = sigmoidNormInverse(metrics.jerkRMS, NORM_PARAMS.jerkRMS.center, NORM_PARAMS.jerkRMS.scale);
+  const normSwayRMS  = sigmoidNormInverse(metrics.swayRMS,       NORM_PARAMS.swayRMS.center,      NORM_PARAMS.swayRMS.scale);
+  const normVelocity = sigmoidNormInverse(metrics.swayVelocity,  NORM_PARAMS.swayVelocity.center, NORM_PARAMS.swayVelocity.scale);
+  const normArea     = sigmoidNormInverse(metrics.stabilityArea, NORM_PARAMS.stabilityArea.center, NORM_PARAMS.stabilityArea.scale);
+  const normJerk     = sigmoidNormInverse(metrics.jerkRMS,       NORM_PARAMS.jerkRMS.center,      NORM_PARAMS.jerkRMS.scale);
 
   // Time-in-zone is already 0-1, higher = better
   const normTimeInZone = metrics.timeInZone;
 
-  // Weighted combination
   const totalWeight = weights.swayRMS + weights.swayVelocity + weights.stabilityArea + weights.timeInZone + weights.jerkRMS;
 
   const rawScore =
-    (weights.swayRMS * normSwayRMS +
+    (weights.swayRMS      * normSwayRMS  +
      weights.swayVelocity * normVelocity +
-     weights.stabilityArea * normArea +
-     weights.timeInZone * normTimeInZone +
-     weights.jerkRMS * normJerk) / totalWeight;
+     weights.stabilityArea * normArea    +
+     weights.timeInZone   * normTimeInZone +
+     weights.jerkRMS      * normJerk) / totalWeight;
 
-  // Scale to 0-100 and clamp
   return Math.max(0, Math.min(100, rawScore * 100));
 }

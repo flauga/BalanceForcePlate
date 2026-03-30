@@ -2,21 +2,22 @@
  * Serial port wrapper for ESP32 communication.
  *
  * Reads JSON Lines from the ESP32 USB serial port and emits
- * parsed IMU data frames.
+ * parsed force plate data frames. Also supports writing commands
+ * ("start\n", "stop\n") back to the ESP32.
  */
 
 import { SerialPort } from 'serialport';
 import { ReadlineParser } from 'serialport';
-import { parseSerialLine, isStatusMessage, RawIMUData } from '@imu-balance/processing';
+import { parseSerialLine, isStatusMessage, RawForceData } from '@force-plate/processing';
 
 export interface SerialConfig {
   path: string;
   baudRate: number;
 }
 
-export type DataCallback = (data: RawIMUData) => void;
+export type DataCallback   = (data: RawForceData) => void;
 export type StatusCallback = (status: Record<string, unknown>) => void;
-export type ErrorCallback = (error: Error) => void;
+export type ErrorCallback  = (error: Error) => void;
 
 export class SerialConnection {
   private port: SerialPort | null = null;
@@ -26,23 +27,12 @@ export class SerialConnection {
   private onError?: ErrorCallback;
 
   constructor(
-    private config: SerialConfig = { path: '', baudRate: 460800 },
+    private config: SerialConfig = { path: '', baudRate: 115200 },
   ) {}
 
-  /** Set callback for IMU data frames */
-  setDataHandler(handler: DataCallback): void {
-    this.onData = handler;
-  }
-
-  /** Set callback for status messages */
-  setStatusHandler(handler: StatusCallback): void {
-    this.onStatus = handler;
-  }
-
-  /** Set callback for errors */
-  setErrorHandler(handler: ErrorCallback): void {
-    this.onError = handler;
-  }
+  setDataHandler(handler: DataCallback):   void { this.onData   = handler; }
+  setStatusHandler(handler: StatusCallback): void { this.onStatus = handler; }
+  setErrorHandler(handler: ErrorCallback):  void { this.onError  = handler; }
 
   /** Open serial connection */
   async open(path?: string): Promise<void> {
@@ -53,10 +43,7 @@ export class SerialConnection {
         path: this.config.path,
         baudRate: this.config.baudRate,
       }, (err) => {
-        if (err) {
-          reject(err);
-          return;
-        }
+        if (err) { reject(err); return; }
 
         this.parser = this.port!.pipe(new ReadlineParser({ delimiter: '\n' }));
 
@@ -65,14 +52,12 @@ export class SerialConnection {
             try {
               const status = JSON.parse(line.trim());
               this.onStatus?.(status);
-            } catch { /* ignore parse errors for status */ }
+            } catch { /* ignore */ }
             return;
           }
 
           const data = parseSerialLine(line);
-          if (data) {
-            this.onData?.(data);
-          }
+          if (data) this.onData?.(data);
         });
 
         this.port!.on('error', (err: Error) => {
@@ -82,6 +67,13 @@ export class SerialConnection {
         resolve();
       });
     });
+  }
+
+  /** Send a command string to the ESP32 (e.g. "start\n" or "stop\n"). */
+  write(data: string): void {
+    if (this.port && this.port.isOpen) {
+      this.port.write(data);
+    }
   }
 
   /** Close serial connection */
@@ -95,7 +87,6 @@ export class SerialConnection {
     });
   }
 
-  /** Check if port is open */
   isOpen(): boolean {
     return this.port?.isOpen ?? false;
   }
@@ -103,15 +94,12 @@ export class SerialConnection {
   /** List available serial ports */
   static async listPorts(): Promise<{ path: string; manufacturer?: string }[]> {
     const ports = await SerialPort.list();
-    return ports.map(p => ({
-      path: p.path,
-      manufacturer: p.manufacturer,
-    }));
+    return ports.map(p => ({ path: p.path, manufacturer: p.manufacturer }));
   }
 }
 
 /**
- * Simulated serial connection that replays recorded data.
+ * Simulated serial connection that generates synthetic force plate data.
  * Useful for development and testing without hardware.
  */
 export class SimulatedSerial {
@@ -120,13 +108,11 @@ export class SimulatedSerial {
   private sampleIndex = 0;
   private startTime = 0;
 
-  constructor(private sampleRate: number = 100) {}
+  constructor(private sampleRate: number = 40) {}
 
-  setDataHandler(handler: DataCallback): void {
-    this.onData = handler;
-  }
+  setDataHandler(handler: DataCallback): void { this.onData = handler; }
 
-  /** Start generating simulated IMU data */
+  /** Start generating simulated force plate data */
   start(): void {
     this.startTime = Date.now();
     this.sampleIndex = 0;
@@ -135,23 +121,28 @@ export class SimulatedSerial {
       const t = Date.now() - this.startTime;
       const time = this.sampleIndex / this.sampleRate;
 
-      // Simulate gentle sway with some noise
-      const swayFreq = 0.3;  // Hz, natural sway
-      const swayAmp = 0.02;  // g
+      // Base load: equal weight on all 4 corners (~50kg total → ~12.5kg each)
+      const baseLoad = 125000;
 
-      const ax = swayAmp * Math.sin(2 * Math.PI * swayFreq * time) + (Math.random() - 0.5) * 0.005;
-      const ay = swayAmp * Math.cos(2 * Math.PI * swayFreq * 0.7 * time) + (Math.random() - 0.5) * 0.005;
-      const az = 0.98 + (Math.random() - 0.5) * 0.01;
-      const gx = swayAmp * 50 * Math.cos(2 * Math.PI * swayFreq * time) + (Math.random() - 0.5) * 0.5;
-      const gy = -swayAmp * 50 * Math.sin(2 * Math.PI * swayFreq * 0.7 * time) + (Math.random() - 0.5) * 0.5;
-      const gz = (Math.random() - 0.5) * 0.2;
+      // Simulate gentle sway as COP shift
+      const swayFreq = 0.3;   // Hz, natural sway
+      const swayAmp  = 0.03;  // fraction of base load
 
-      this.onData?.({ t, ax, ay, az, gx, gy, gz });
+      const copX = swayAmp * Math.sin(2 * Math.PI * swayFreq * time);
+      const copY = swayAmp * Math.cos(2 * Math.PI * swayFreq * 0.7 * time);
+
+      // Distribute load based on COP offset
+      const noise = () => (Math.random() - 0.5) * baseLoad * 0.005;
+      const f0 = baseLoad * (1 - copX + copY) / 4 + noise();   // front-left
+      const f1 = baseLoad * (1 + copX + copY) / 4 + noise();   // front-right
+      const f2 = baseLoad * (1 - copX - copY) / 4 + noise();   // back-left
+      const f3 = baseLoad * (1 + copX - copY) / 4 + noise();   // back-right
+
+      this.onData?.({ t, f0, f1, f2, f3 });
       this.sampleIndex++;
     }, 1000 / this.sampleRate);
   }
 
-  /** Stop simulated data generation */
   stop(): void {
     if (this.intervalId) {
       clearInterval(this.intervalId);

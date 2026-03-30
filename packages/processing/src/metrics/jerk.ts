@@ -1,11 +1,11 @@
 /**
- * Jerk metric: rate of change of angular velocity.
+ * Jerk metric: rate of change of COP velocity.
  *
  * Jerk captures the smoothness of balance corrections. High jerk values
  * indicate abrupt, jerky corrections — a sign of poor motor control.
  * Lower jerk values suggest smooth, well-coordinated balance responses.
  *
- * J = dω/dt (derivative of angular velocity)
+ * J = dv/dt (derivative of COP velocity)
  *
  * Reference:
  * - Hogan & Sternad (2009): Sensitivity of smoothness measures to movement
@@ -13,30 +13,30 @@
  */
 
 /**
- * Compute RMS jerk from angular velocity arrays.
+ * Compute RMS jerk from COP velocity arrays.
  *
- * @param gyroX Gyroscope X time series (deg/s)
- * @param gyroY Gyroscope Y time series (deg/s)
+ * Uses central difference approximation: jerk_i = (v_{i+1} - v_{i-1}) / (2·dt)
+ *
+ * @param copXVel COP X velocity time series (mm/s)
+ * @param copYVel COP Y velocity time series (mm/s)
  * @param sampleRate Sample rate in Hz
- * @returns RMS jerk in deg/s³
+ * @returns RMS jerk in mm/s³
  */
 export function computeJerkRMS(
-  gyroX: number[],
-  gyroY: number[],
+  copXVel: number[],
+  copYVel: number[],
   sampleRate: number,
 ): number {
-  const n = gyroX.length;
+  const n = copXVel.length;
   if (n < 3) return 0;
 
   const dt = 1.0 / sampleRate;
   let sumSq = 0;
   let count = 0;
 
-  // Central difference approximation for derivative of angular velocity
-  // jerk_i = (ω_{i+1} - ω_{i-1}) / (2·dt)
   for (let i = 1; i < n - 1; i++) {
-    const jerkX = (gyroX[i + 1] - gyroX[i - 1]) / (2 * dt);
-    const jerkY = (gyroY[i + 1] - gyroY[i - 1]) / (2 * dt);
+    const jerkX = (copXVel[i + 1] - copXVel[i - 1]) / (2 * dt);
+    const jerkY = (copYVel[i + 1] - copYVel[i - 1]) / (2 * dt);
     sumSq += jerkX * jerkX + jerkY * jerkY;
     count++;
   }

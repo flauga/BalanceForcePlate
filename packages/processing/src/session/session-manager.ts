@@ -8,13 +8,13 @@
  * - Generates unique session IDs
  */
 
-import { RawIMUData, ProcessedFrame, Session, BalanceMetrics, SessionState } from '../types.js';
+import { RawForceData, ProcessedFrame, Session, BalanceMetrics } from '../types.js';
 
 export class SessionManager {
   private currentSessionId: string | null = null;
   private sessionStartTime: number = 0;
   private sessionStartEpoch: number = 0;
-  private rawBuffer: RawIMUData[] = [];
+  private rawBuffer: RawForceData[] = [];
   private frameBuffer: ProcessedFrame[] = [];
   private lastMetrics: BalanceMetrics | null = null;
 
@@ -50,7 +50,7 @@ export class SessionManager {
   /**
    * Record a raw data sample during an active session.
    */
-  addRawSample(data: RawIMUData): void {
+  addRawSample(data: RawForceData): void {
     if (this.isActive()) {
       this.rawBuffer.push(data);
     }
