@@ -1,0 +1,7 @@
+// WiFi credentials — copy this file to wifi_config.h and fill in your details.
+// wifi_config.h is gitignored so credentials are never committed.
+
+#pragma once
+
+#define WIFI_SSID     "YourNetworkName"
+#define WIFI_PASSWORD "YourPassword"

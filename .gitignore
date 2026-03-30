@@ -1,0 +1,41 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build outputs
+dist/
+build/
+.next/
+out/
+
+# PlatformIO
+firmware/.pio/
+firmware/.vscode/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# WiFi credentials — copy wifi_config.h.example to wifi_config.h to enable WiFi
+firmware/src/wifi_config.h
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Sessions data
+sessions/
+
+# TypeScript
+*.tsbuildinfo
+
+# Logs
+*.log
+npm-debug.log*

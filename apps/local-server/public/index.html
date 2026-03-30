@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IMU Balance Board - Dashboard</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <header>
+        <h1>IMU Balance Board</h1>
+        <div id="esp32-status" class="esp32-status"></div>
+        <div id="connection-status" class="status disconnected">Disconnected</div>
+    </header>
+
+    <main>
+        <!-- Top row: Score + Timer + Session State -->
+        <section class="top-bar">
+            <div class="score-display">
+                <div class="score-label">Balance Score</div>
+                <div id="balance-score" class="score-value">--</div>
+            </div>
+            <div class="timer-display">
+                <div class="timer-label">Session Time</div>
+                <div id="session-timer" class="timer-value">0:00</div>
+            </div>
+            <div class="state-display">
+                <div class="state-label">State</div>
+                <div id="session-state" class="state-value idle">Idle</div>
+            </div>
+        </section>
+
+        <!-- Charts row -->
+        <section class="charts-row">
+            <div class="chart-container">
+                <h3>Sway Trajectory</h3>
+                <canvas id="sway-canvas" width="400" height="400"></canvas>
+            </div>
+            <div class="chart-container">
+                <h3>Roll / Pitch</h3>
+                <canvas id="timeseries-canvas" width="600" height="400"></canvas>
+            </div>
+        </section>
+
+        <!-- Metrics row -->
+        <section class="metrics-row">
+            <div class="metric-card">
+                <div class="metric-label">Sway RMS</div>
+                <div id="metric-sway-rms" class="metric-value">--</div>
+                <div class="metric-unit">deg</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-label">Path Length</div>
+                <div id="metric-path-length" class="metric-value">--</div>
+                <div class="metric-unit">deg</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-label">Sway Velocity</div>
+                <div id="metric-velocity" class="metric-value">--</div>
+                <div class="metric-unit">deg/s</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-label">Stability Area</div>
+                <div id="metric-area" class="metric-value">--</div>
+                <div class="metric-unit">deg&sup2;</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-label">Jerk RMS</div>
+                <div id="metric-jerk" class="metric-value">--</div>
+                <div class="metric-unit">deg/s&sup3;</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-label">Time in Zone</div>
+                <div id="metric-tiz" class="metric-value">--</div>
+                <div class="metric-unit">%</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-label">Dominant Freq</div>
+                <div id="metric-freq" class="metric-value">--</div>
+                <div class="metric-unit">Hz</div>
+            </div>
+        </section>
+
+        <!-- Session history -->
+        <section class="history-section">
+            <h3>Session History</h3>
+            <table id="session-table">
+                <thead>
+                    <tr>
+                        <th>Date</th>
+                        <th>Duration</th>
+                        <th>Score</th>
+                        <th>Raw CSV</th>
+                        <th>Processed CSV</th>
+                    </tr>
+                </thead>
+                <tbody id="session-tbody"></tbody>
+            </table>
+        </section>
+    </main>
+
+    <script src="charts.js"></script>
+    <script src="dashboard.js"></script>
+</body>
+</html>

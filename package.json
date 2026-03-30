@@ -1,0 +1,12 @@
+{
+  "name": "imu-balance-board",
+  "version": "1.0.0",
+  "private": true,
+  "description": "IMU-based balance board training system with real-time posturography metrics",
+  "scripts": {
+    "build": "pnpm -r build",
+    "test": "pnpm -r test",
+    "dev:local": "pnpm --filter local-server dev",
+    "dev:web": "pnpm --filter web dev"
+  }
+}
