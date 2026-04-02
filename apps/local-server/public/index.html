@@ -42,6 +42,36 @@
             </div>
         </section>
 
+        <!-- Load Cell Status -->
+        <section class="loadcells-panel">
+            <div class="loadcells-info">
+                <div class="loadcells-status-group">
+                    <span class="loadcells-label">Load Cells</span>
+                    <span id="loadcells-count" class="loadcells-count">—</span>
+                </div>
+                <span id="loadcells-sim-status" class="loadcells-sim-status"></span>
+                <button id="run-sample-btn" class="btn btn-sample" style="display:none">⚡ Run Sample</button>
+            </div>
+            <div id="loadcell-values" class="loadcell-values-grid" style="display:none">
+                <div class="lc-value-item">
+                    <div class="lc-label">FL</div>
+                    <div id="lc-val-0" class="lc-value">—</div>
+                </div>
+                <div class="lc-value-item">
+                    <div class="lc-label">FR</div>
+                    <div id="lc-val-1" class="lc-value">—</div>
+                </div>
+                <div class="lc-value-item">
+                    <div class="lc-label">BL</div>
+                    <div id="lc-val-2" class="lc-value">—</div>
+                </div>
+                <div class="lc-value-item">
+                    <div class="lc-label">BR</div>
+                    <div id="lc-val-3" class="lc-value">—</div>
+                </div>
+            </div>
+        </section>
+
         <!-- Session Control -->
         <section class="session-control">
             <button id="start-btn" class="btn btn-start" disabled>▶ Start Session</button>

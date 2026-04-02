@@ -1,0 +1,17 @@
+// loadcell_config.h.example
+//
+// Copy this file to loadcell_config.h and set LOADCELLS_CONNECTED_COUNT to
+// the number of HX711 channels that have a physical load cell wired up.
+//
+// The firmware reads this at compile time and broadcasts the count to the
+// laptop dashboard on startup via a JSON status message:
+//   {"status":"loadcells_state","connected_count":4,"channel_count":4}
+//
+// This allows the dashboard to show load cell connectivity and offer a
+// synthetic "Run Sample" mode when no cells are connected.
+//
+// Usage:
+//   cp loadcell_config.h.example loadcell_config.h
+//   # then edit the value below
+
+#define LOADCELLS_CONNECTED_COUNT  4   // 0 = none wired; 1-4 = partial/full

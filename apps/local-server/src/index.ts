@@ -32,6 +32,7 @@ import { SerialConnection, SimulatedSerial } from './serial.js';
 import { WifiConnection } from './wifi-connection.js';
 import { WsBroadcaster } from './ws-server.js';
 import { SessionStore } from './session-store.js';
+import { LoadcellSampleSimulator } from './loadcell-sample-simulator.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -69,7 +70,27 @@ async function main() {
     ws.broadcastSessionEnd(session);
   });
 
+  // ---- Sample simulation ---------------------------------------------------
+  let sampleActive = false;
+  const simulator  = new LoadcellSampleSimulator(ws, 4);
+
+  ws.setCommandHandler((cmd) => {
+    if (cmd.action === 'run_loadcell_sample') {
+      if (simulator.isRunning()) return;
+      sampleActive = true;
+      ws.broadcastStatus({ status: 'loadcells_sample_started' });
+      console.log('[Sample] Started loadcell simulation');
+      simulator.start(() => {
+        sampleActive = false;
+        ws.broadcastStatus({ status: 'loadcells_sample_done' });
+        console.log('[Sample] Loadcell simulation complete');
+      });
+    }
+  });
+
+  // ---- Real data handler (gated while simulation is running) ---------------
   const handleData = (data: RawForceData) => {
+    if (sampleActive) return;   // suppress real frames during simulation
     const frame = pipeline.processSample(data);
     ws.broadcastFrame(frame);
   };

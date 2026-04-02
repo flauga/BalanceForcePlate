@@ -41,6 +41,15 @@
 #define WIFI_HOSTNAME    "force-plate"   // reachable as force-plate.local via mDNS
 
 // ---------------------------------------------------------------------------
+// Load cell connectivity (overridable via loadcell_config.h)
+// ---------------------------------------------------------------------------
+// How many of the 4 HX711 channels have a physical load cell wired up.
+// Set LOADCELLS_CONNECTED_COUNT to the actual count in loadcell_config.h.
+// The firmware broadcasts this on startup so the dashboard can show status.
+#define LOADCELLS_CONNECTED_COUNT  0
+#define LOADCELLS_CHANNEL_COUNT    4
+
+// ---------------------------------------------------------------------------
 // Force plate geometry
 // ---------------------------------------------------------------------------
 // Straight-line distance between left and right cell mounting points (mm)
