@@ -2,6 +2,11 @@
 #include "config.h"
 #include "hx711.h"
 
+// Load cell count override — copy loadcell_config.h.example → loadcell_config.h
+#if __has_include("loadcell_config.h")
+  #include "loadcell_config.h"
+#endif
+
 // WiFi streaming — only enabled when wifi_config.h exists.
 // Copy wifi_config.h.example → wifi_config.h and fill in credentials.
 #if __has_include("wifi_config.h")
@@ -76,6 +81,14 @@ void setup() {
     sensors.begin();   // configures GPIO + tares all 4 cells
 
     broadcast("{\"status\":\"ready\",\"sensor\":\"hx711\",\"rate\":" + String(SAMPLE_RATE_HZ) + "}");
+
+    // Broadcast load cell connectivity so the dashboard can show status
+    broadcast(
+        "{\"status\":\"loadcells_state\","
+        "\"connected_count\":" + String(LOADCELLS_CONNECTED_COUNT) + ","
+        "\"channel_count\":"   + String(LOADCELLS_CHANNEL_COUNT)   + "}"
+    );
+
     lastSampleTime = micros();
 }
 

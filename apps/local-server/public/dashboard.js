@@ -33,10 +33,19 @@ const metricEls = {
   freq:       document.getElementById('metric-freq'),
 };
 
+// ---- New DOM refs (loadcells panel) ----------------------------------------
+const loadcellsCountEl  = document.getElementById('loadcells-count');
+const loadcellsSimEl    = document.getElementById('loadcells-sim-status');
+const runSampleBtn      = document.getElementById('run-sample-btn');
+const loadcellValuesEl  = document.getElementById('loadcell-values');
+const lcValEls          = [0, 1, 2, 3].map(i => document.getElementById(`lc-val-${i}`));
+
 // ---- State -----------------------------------------------------------------
-let sessionStartTime = null;
-let timerInterval    = null;
-let espConnected     = false;
+let sessionStartTime        = null;
+let timerInterval           = null;
+let espConnected            = false;
+let loadcellsConnectedCount = null;   // null = unknown; 0 = none wired
+let sampleRunning           = false;
 
 // ---- WebSocket connection to local server ----------------------------------
 let ws = null;
@@ -70,9 +79,10 @@ function connectWS() {
 
 function handleMessage(msg) {
   switch (msg.type) {
-    case 'frame':       handleFrame(msg.data);      break;
-    case 'session_end': handleSessionEnd(msg.data); break;
-    case 'status':      handleStatus(msg.data);     break;
+    case 'frame':            handleFrame(msg.data);           break;
+    case 'session_end':      handleSessionEnd(msg.data);      break;
+    case 'status':           handleStatus(msg.data);          break;
+    case 'loadcells_values': handleLoadcellValues(msg.data);  break;
   }
 }
 
@@ -93,6 +103,8 @@ function handleStatus(s) {
     wifi_timeout:            '✗ WiFi timeout',
     wifi_tcp_connected:      '✓ TCP connected',
     wifi_tcp_disconnected:   '… TCP reconnecting',
+    loadcells_sample_started: null,   // handled below
+    loadcells_sample_done:    null,
   };
 
   if (s.status === 'connected') {
@@ -101,15 +113,63 @@ function handleStatus(s) {
   } else if (s.status === 'disconnected') {
     espConnected = false;
     setESPConnected(false);
+  } else if (s.status === 'loadcells_state') {
+    updateLoadcellsState(s.connected_count, s.channel_count);
+    return;
+  } else if (s.status === 'loadcells_sample_started') {
+    sampleRunning = true;
+    runSampleBtn.disabled = true;
+    loadcellsSimEl.textContent = '⚡ Simulation running…';
+    swayChart.clear();
+    forceChart.clear();
+    swayChart.draw();
+    forceChart.draw();
+    return;
+  } else if (s.status === 'loadcells_sample_done') {
+    sampleRunning = false;
+    runSampleBtn.disabled = false;
+    loadcellsSimEl.textContent = '✓ Sample complete';
+    return;
   }
 
-  espStatusEl.textContent = labels[s.status] ?? `ESP: ${s.status}`;
+  const label = labels[s.status];
+  if (label !== null && label !== undefined) {
+    espStatusEl.textContent = label;
+  } else {
+    espStatusEl.textContent = `ESP: ${s.status}`;
+  }
+}
+
+// ---- Load cell state -------------------------------------------------------
+function updateLoadcellsState(connected, total) {
+  loadcellsConnectedCount = connected;
+  loadcellsCountEl.textContent = `${connected}/${total}`;
+  loadcellsCountEl.style.color = connected > 0 ? '#4ade80' : '#f87171';
+
+  // Show Run Sample button only when no cells are wired
+  runSampleBtn.style.display = connected === 0 ? 'inline-flex' : 'none';
+
+  if (connected > 0) {
+    loadcellsSimEl.textContent = '';
+    loadcellValuesEl.style.display = 'none';
+  }
+}
+
+// ---- Load cell values (from real streaming or simulation) ------------------
+function handleLoadcellValues(d) {
+  loadcellValuesEl.style.display = 'flex';
+  d.values.forEach((v, i) => {
+    if (lcValEls[i]) lcValEls[i].textContent = Math.round(v).toLocaleString();
+  });
 }
 
 // ---- Frame handling --------------------------------------------------------
 let frameCount = 0;
 
 function handleFrame(frame) {
+  // Suppress real frames when no cells are wired and no simulation is running
+  if (loadcellsConnectedCount === 0 && !sampleRunning) return;
+
   frameCount++;
 
   // Update force distribution chart every frame
@@ -339,6 +399,15 @@ async function loadHistory() {
     console.log('[History] Could not load:', e.message);
   }
 }
+
+// ---- Run Sample button -----------------------------------------------------
+runSampleBtn.addEventListener('click', () => {
+  if (!ws || ws.readyState !== WebSocket.OPEN) return;
+  ws.send(JSON.stringify({
+    type: 'command',
+    data: { action: 'run_loadcell_sample', channel_count: 4 },
+  }));
+});
 
 // ---- Initialize ------------------------------------------------------------
 connectWS();

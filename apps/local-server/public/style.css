@@ -188,6 +188,86 @@ main {
     padding-bottom: 6px;
 }
 
+/* ---- Load Cells Panel ---- */
+.loadcells-panel {
+    background: #1a1d27;
+    border: 1px solid #2a2d3a;
+    border-radius: 12px;
+    padding: 14px 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.loadcells-info {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    flex-wrap: wrap;
+}
+
+.loadcells-status-group {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.loadcells-label {
+    font-size: 12px;
+    color: #666;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.loadcells-count {
+    font-size: 18px;
+    font-weight: 700;
+    color: #e0e0e0;
+    font-variant-numeric: tabular-nums;
+}
+
+.loadcells-sim-status {
+    font-size: 13px;
+    color: #a78bfa;
+}
+
+.btn-sample {
+    background: #1a1432;
+    color: #a78bfa;
+    border: 1px solid #5b21b6;
+}
+.btn-sample:not(:disabled):hover { background: #5b21b6; color: #fff; }
+
+.loadcell-values-grid {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.lc-value-item {
+    background: #0f1117;
+    border: 1px solid #2a2d3a;
+    border-radius: 8px;
+    padding: 10px 16px;
+    text-align: center;
+    min-width: 80px;
+}
+
+.lc-label {
+    font-size: 11px;
+    color: #555;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 4px;
+}
+
+.lc-value {
+    font-size: 18px;
+    font-weight: 700;
+    color: #e0e0e0;
+    font-variant-numeric: tabular-nums;
+}
+
 /* ---- Session Control ---- */
 .session-control {
     background: #1a1d27;
