@@ -1,40 +1,72 @@
 /**
  * Serial port wrapper for ESP32 communication.
  *
- * Reads JSON Lines from the ESP32 USB serial port and emits
- * parsed force plate data frames. Also supports writing commands
- * ("start\n", "stop\n") back to the ESP32.
+ * Reads the text-based protocol from the ESP32 USB serial port:
+ *   Posting:  [<ms>ms] FL:<g>g FR:<g>g BL:<g>g BR:<g>g TOTAL:<g>g
+ *   Status:   [STATUS] {json}
+ *   Cal:      [CAL:<n>] STEP:1/2/3 ...
+ *   Cal done: [CAL:<n>] DONE ...
+ *   Info:     [INFO] message
  */
 
-import { SerialPort } from 'serialport';
-import { ReadlineParser } from 'serialport';
-import { parseSerialLine, isStatusMessage, RawForceData } from '@force-plate/processing';
+import { SerialPort, ReadlineParser } from 'serialport';
 
 export interface SerialConfig {
   path: string;
   baudRate: number;
 }
 
+export interface RawForceData {
+  t: number;
+  fl: number;
+  fr: number;
+  bl: number;
+  br: number;
+  total: number;
+}
+
 export type DataCallback   = (data: RawForceData) => void;
 export type StatusCallback = (status: Record<string, unknown>) => void;
+export type RawLineCallback = (line: string) => void;
 export type ErrorCallback  = (error: Error) => void;
+
+/**
+ * Parse a posting line:
+ * [12345ms] FL:123.45g FR:100.00g BL:80.00g BR:90.00g TOTAL:393.45g
+ */
+function parsePostingLine(line: string): RawForceData | null {
+  const msM = line.match(/^\[(\d+)ms\]/);
+  if (!msM) return null;
+  const t = parseInt(msM[1]);
+
+  const fl = parseFloat(line.match(/FL:([-\d.]+)g/)?.[1] ?? 'NaN');
+  const fr = parseFloat(line.match(/FR:([-\d.]+)g/)?.[1] ?? 'NaN');
+  const bl = parseFloat(line.match(/BL:([-\d.]+)g/)?.[1] ?? 'NaN');
+  const br = parseFloat(line.match(/BR:([-\d.]+)g/)?.[1] ?? 'NaN');
+  const totalM = line.match(/TOTAL:([-\d.]+)g/);
+  const total = totalM ? parseFloat(totalM[1]) : fl + fr + bl + br;
+
+  if (isNaN(fl) || isNaN(fr) || isNaN(bl) || isNaN(br)) return null;
+  return { t, fl, fr, bl, br, total };
+}
 
 export class SerialConnection {
   private port: SerialPort | null = null;
   private parser: ReadlineParser | null = null;
   private onData?: DataCallback;
   private onStatus?: StatusCallback;
+  private onRawLine?: RawLineCallback;
   private onError?: ErrorCallback;
 
   constructor(
     private config: SerialConfig = { path: '', baudRate: 115200 },
   ) {}
 
-  setDataHandler(handler: DataCallback):   void { this.onData   = handler; }
-  setStatusHandler(handler: StatusCallback): void { this.onStatus = handler; }
-  setErrorHandler(handler: ErrorCallback):  void { this.onError  = handler; }
+  setDataHandler(handler: DataCallback):     void { this.onData    = handler; }
+  setStatusHandler(handler: StatusCallback): void { this.onStatus  = handler; }
+  setRawLineHandler(handler: RawLineCallback): void { this.onRawLine = handler; }
+  setErrorHandler(handler: ErrorCallback):   void { this.onError   = handler; }
 
-  /** Open serial connection */
   async open(path?: string): Promise<void> {
     if (path) this.config.path = path;
 
@@ -48,16 +80,28 @@ export class SerialConnection {
         this.parser = this.port!.pipe(new ReadlineParser({ delimiter: '\n' }));
 
         this.parser.on('data', (line: string) => {
-          if (isStatusMessage(line)) {
+          const trimmed = line.trim();
+          if (!trimmed) return;
+
+          // Forward raw line for cal/info passthrough to dashboard
+          this.onRawLine?.(trimmed);
+
+          // [STATUS] {json}
+          if (trimmed.startsWith('[STATUS]')) {
             try {
-              const status = JSON.parse(line.trim());
+              const json = trimmed.slice(8).trim();
+              const status = JSON.parse(json);
               this.onStatus?.(status);
             } catch { /* ignore */ }
             return;
           }
 
-          const data = parseSerialLine(line);
-          if (data) this.onData?.(data);
+          // Posting line
+          const data = parsePostingLine(trimmed);
+          if (data) {
+            this.onData?.(data);
+            return;
+          }
         });
 
         this.port!.on('error', (err: Error) => {
@@ -69,14 +113,12 @@ export class SerialConnection {
     });
   }
 
-  /** Send a command string to the ESP32 (e.g. "start\n" or "stop\n"). */
   write(data: string): void {
     if (this.port && this.port.isOpen) {
       this.port.write(data);
     }
   }
 
-  /** Close serial connection */
   async close(): Promise<void> {
     return new Promise((resolve) => {
       if (this.port && this.port.isOpen) {
@@ -91,62 +133,8 @@ export class SerialConnection {
     return this.port?.isOpen ?? false;
   }
 
-  /** List available serial ports */
-  static async listPorts(): Promise<{ path: string; manufacturer?: string }[]> {
+  static async listPorts(): Promise<{ path: string; manufacturer?: string; friendlyName?: string }[]> {
     const ports = await SerialPort.list();
-    return ports.map(p => ({ path: p.path, manufacturer: p.manufacturer }));
-  }
-}
-
-/**
- * Simulated serial connection that generates synthetic force plate data.
- * Useful for development and testing without hardware.
- */
-export class SimulatedSerial {
-  private intervalId: ReturnType<typeof setInterval> | null = null;
-  private onData?: DataCallback;
-  private sampleIndex = 0;
-  private startTime = 0;
-
-  constructor(private sampleRate: number = 40) {}
-
-  setDataHandler(handler: DataCallback): void { this.onData = handler; }
-
-  /** Start generating simulated force plate data */
-  start(): void {
-    this.startTime = Date.now();
-    this.sampleIndex = 0;
-
-    this.intervalId = setInterval(() => {
-      const t = Date.now() - this.startTime;
-      const time = this.sampleIndex / this.sampleRate;
-
-      // Base load: equal weight on all 4 corners (~50kg total → ~12.5kg each)
-      const baseLoad = 125000;
-
-      // Simulate gentle sway as COP shift
-      const swayFreq = 0.3;   // Hz, natural sway
-      const swayAmp  = 0.03;  // fraction of base load
-
-      const copX = swayAmp * Math.sin(2 * Math.PI * swayFreq * time);
-      const copY = swayAmp * Math.cos(2 * Math.PI * swayFreq * 0.7 * time);
-
-      // Distribute load based on COP offset
-      const noise = () => (Math.random() - 0.5) * baseLoad * 0.005;
-      const f0 = baseLoad * (1 - copX + copY) / 4 + noise();   // front-left
-      const f1 = baseLoad * (1 + copX + copY) / 4 + noise();   // front-right
-      const f2 = baseLoad * (1 - copX - copY) / 4 + noise();   // back-left
-      const f3 = baseLoad * (1 + copX - copY) / 4 + noise();   // back-right
-
-      this.onData?.({ t, f0, f1, f2, f3 });
-      this.sampleIndex++;
-    }, 1000 / this.sampleRate);
-  }
-
-  stop(): void {
-    if (this.intervalId) {
-      clearInterval(this.intervalId);
-      this.intervalId = null;
-    }
+    return ports.map(p => ({ path: p.path, manufacturer: p.manufacturer, friendlyName: (p as any).friendlyName }));
   }
 }

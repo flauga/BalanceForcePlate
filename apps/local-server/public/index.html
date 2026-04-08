@@ -1,167 +1,842 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Balance Force Plate - Dashboard</title>
-    <link rel="stylesheet" href="style.css">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Forceplate Dashboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<style>
+:root {
+  --bg:       #0e0e0f;
+  --bg2:      #161618;
+  --bg3:      #1e1e21;
+  --bg4:      #26262a;
+  --border:   rgba(255,255,255,.08);
+  --border2:  rgba(255,255,255,.14);
+  --text:     #e8e8ea;
+  --text2:    #888890;
+  --text3:    #55555c;
+  --green:    #4ade80;
+  --green-bg: rgba(74,222,128,.1);
+  --red:      #f87171;
+  --red-bg:   rgba(248,113,113,.1);
+  --amber:    #fbbf24;
+  --amber-bg: rgba(251,191,36,.1);
+  --blue:     #60a5fa;
+  --blue-bg:  rgba(96,165,250,.1);
+  --fl:       #60a5fa;
+  --fr:       #4ade80;
+  --bl:       #fbbf24;
+  --br:       #f87171;
+  --r:        6px;
+  --r2:       10px;
+  --font:     'IBM Plex Sans', sans-serif;
+  --mono:     'IBM Plex Mono', monospace;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html { background: var(--bg); color: var(--text); font-family: var(--font); font-size: 14px; }
+body { max-width: 900px; margin: 0 auto; padding: 20px 16px 60px; }
+
+.header { display: flex; align-items: center; gap: 10px; margin-bottom: 20px; }
+.header h1 { font-size: 15px; font-weight: 600; letter-spacing: .04em; }
+.header-sub { font-size: 12px; color: var(--text3); font-family: var(--mono); }
+.spacer { flex: 1; }
+.pill { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 500;
+        padding: 4px 10px; border-radius: 20px; background: var(--bg3); border: 1px solid var(--border); color: var(--text2); }
+.dot { width: 7px; height: 7px; border-radius: 50%; background: var(--text3); flex-shrink: 0; }
+.dot.on  { background: var(--green); box-shadow: 0 0 6px var(--green); }
+.dot.rec { background: var(--red);   animation: blink 1s infinite; }
+.dot.cal { background: var(--amber); animation: blink .7s infinite; }
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:.25} }
+
+.tabs { display: flex; gap: 1px; margin-bottom: 18px; border-bottom: 1px solid var(--border); }
+.tab { font-size: 13px; font-weight: 500; padding: 8px 14px; background: none; border: none;
+       color: var(--text2); cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px; transition: color .15s; }
+.tab:hover { color: var(--text); }
+.tab.active { color: var(--text); border-bottom-color: var(--text); }
+.panel { display: none; }
+.panel.active { display: block; }
+
+button { font-family: var(--font); font-size: 13px; font-weight: 500; padding: 7px 14px;
+          border-radius: var(--r); border: 1px solid var(--border2); background: var(--bg3);
+          color: var(--text); cursor: pointer; transition: background .15s, opacity .15s; }
+button:hover { background: var(--bg4); }
+button:active { opacity: .75; }
+button:disabled { opacity: .3; cursor: not-allowed; }
+.btn-green  { background: var(--green-bg); border-color: rgba(74,222,128,.3); color: var(--green); }
+.btn-green:hover  { background: rgba(74,222,128,.18); }
+.btn-red    { background: var(--red-bg);   border-color: rgba(248,113,113,.3); color: var(--red); }
+.btn-red:hover    { background: rgba(248,113,113,.18); }
+.btn-amber  { background: var(--amber-bg); border-color: rgba(251,191,36,.3);  color: var(--amber); }
+.btn-amber:hover  { background: rgba(251,191,36,.18); }
+select, input[type=text], input[type=number] {
+  font-family: var(--mono); font-size: 13px; padding: 7px 10px; border-radius: var(--r);
+  border: 1px solid var(--border2); background: var(--bg3); color: var(--text); outline: none; }
+select:focus, input:focus { border-color: var(--blue); }
+select option { background: var(--bg3); }
+
+.card { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--r2); padding: 14px 16px; margin-bottom: 12px; }
+.card-title { font-size: 11px; font-weight: 500; letter-spacing: .08em; text-transform: uppercase; color: var(--text3); margin-bottom: 10px; }
+
+.metrics { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 8px; margin-bottom: 10px; }
+.metric { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--r2); padding: 12px 14px; }
+.m-label { font-size: 11px; font-weight: 500; text-transform: uppercase; letter-spacing: .07em; color: var(--text3); margin-bottom: 6px; display: flex; align-items: center; gap: 6px; }
+.m-tag { width: 8px; height: 8px; border-radius: 2px; flex-shrink: 0; }
+.m-val  { font-size: 24px; font-weight: 500; font-family: var(--mono); line-height: 1; }
+.m-unit { font-size: 11px; color: var(--text3); font-family: var(--mono); margin-top: 3px; }
+.c-fl { color: var(--fl); }
+.c-fr { color: var(--fr); }
+.c-bl { color: var(--bl); }
+.c-br { color: var(--br); }
+
+.total-row { display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+             background: var(--bg2); border: 1px solid var(--border); border-radius: var(--r2); padding: 12px 16px; margin-bottom: 10px; }
+.total-main { font-size: 32px; font-weight: 500; font-family: var(--mono); color: var(--text); }
+.total-unit { font-size: 13px; color: var(--text3); }
+.divider-v  { width: 1px; height: 24px; background: var(--border2); }
+.stat-pair  { display: flex; flex-direction: column; gap: 1px; }
+.stat-label { font-size: 10px; text-transform: uppercase; letter-spacing: .07em; color: var(--text3); }
+.stat-val   { font-size: 15px; font-weight: 500; font-family: var(--mono); color: var(--text); }
+
+.divider-h  { height: 1px; background: var(--border); margin: 6px 0; border: none; }
+.stat-unit  { font-size: 10px; color: var(--text3); font-family: var(--mono); }
+#stabCanvas { display: block; border-radius: var(--r); background: var(--bg3); border: 1px solid var(--border); cursor: crosshair; flex-shrink: 0; }
+.stab-metrics-panel { display: flex; flex-direction: column; gap: 5px; min-width: 168px; }
+.stat-row { display: flex; align-items: baseline; gap: 4px; }
+.stat-row .stat-label { flex: 1; font-size: 10px; text-transform: uppercase; letter-spacing: .06em; color: var(--text3); }
+.stat-row .stat-val   { font-size: 13px; font-weight: 500; font-family: var(--mono); color: var(--text); min-width: 52px; text-align: right; }
+.stat-row .stat-unit  { font-size: 10px; color: var(--text3); font-family: var(--mono); min-width: 28px; }
+
+.chart-wrap { position: relative; height: 200px; }
+
+.controls { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; align-items: center; }
+
+.session-stats { display: flex; gap: 16px; flex-wrap: wrap; padding: 8px 14px;
+                  background: var(--bg2); border: 1px solid var(--border); border-radius: var(--r); margin-bottom: 12px; font-size: 12px; color: var(--text2); }
+.ss-item strong { font-family: var(--mono); color: var(--text); font-weight: 500; }
+
+.log { background: var(--bg); border: 1px solid var(--border); border-radius: var(--r);
+       height: 90px; overflow-y: auto; padding: 6px 10px; font-family: var(--mono); font-size: 11px; color: var(--text3); }
+.log-line { padding: 1px 0; }
+.log-ok   { color: var(--green); }
+.log-warn { color: var(--amber); }
+.log-err  { color: var(--red); }
+
+.cal-grid { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 8px; margin-bottom: 14px; }
+.cal-cell { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--r2); padding: 12px; }
+.cal-cell-name { font-size: 13px; font-weight: 600; margin-bottom: 4px; }
+.cal-cell-status { font-size: 11px; color: var(--text2); margin-bottom: 8px; font-family: var(--mono); }
+.cal-cell-detail { font-size: 10px; color: var(--text3); font-family: var(--mono); line-height: 1.6; }
+.badge { display: inline-block; font-size: 10px; font-weight: 500; padding: 2px 7px;
+         border-radius: 4px; letter-spacing: .04em; text-transform: uppercase; }
+.badge-green { background: var(--green-bg); color: var(--green); }
+.badge-red   { background: var(--red-bg);   color: var(--red); }
+.badge-amber { background: var(--amber-bg); color: var(--amber); }
+
+.wizard { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--r2); padding: 20px; margin-bottom: 14px; }
+.wizard-title { font-size: 14px; font-weight: 600; margin-bottom: 4px; }
+.wizard-sub   { font-size: 12px; color: var(--text2); margin-bottom: 16px; line-height: 1.5; }
+.wizard-steps { display: flex; gap: 8px; margin-bottom: 20px; }
+.wstep { flex: 1; height: 4px; border-radius: 2px; background: var(--bg4); transition: background .3s; }
+.wstep.done    { background: var(--green); }
+.wstep.active  { background: var(--amber); }
+.wizard-action { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+</style>
 </head>
 <body>
-    <header>
-        <h1>Balance Force Plate</h1>
-        <div id="esp-status" class="esp-status">Not connected</div>
-        <div id="ws-status" class="status disconnected">Server disconnected</div>
-    </header>
 
-    <main>
-        <!-- ESP Connection Panel -->
-        <section class="connection-panel">
-            <div class="connection-panel-title">ESP32 Connection</div>
-            <div class="connection-row">
-                <div class="conn-group">
-                    <label class="conn-label">Serial Port</label>
-                    <div class="conn-row-inline">
-                        <select id="port-select" class="conn-input" style="min-width:160px">
-                            <option value="">— select port —</option>
-                        </select>
-                        <button id="refresh-ports-btn" class="btn btn-secondary btn-sm">↻ Refresh</button>
-                        <input id="baud-input" type="number" class="conn-input" value="115200" style="width:100px" title="Baud rate">
-                        <button id="connect-btn" class="btn btn-connect">Connect</button>
-                        <button id="disconnect-btn" class="btn btn-disconnect" disabled>Disconnect</button>
-                    </div>
-                </div>
-                <div class="conn-divider">or</div>
-                <div class="conn-group">
-                    <label class="conn-label">WiFi (TCP)</label>
-                    <div class="conn-row-inline">
-                        <input id="wifi-host" type="text" class="conn-input" placeholder="192.168.x.x or force-plate.local" style="width:220px">
-                        <input id="wifi-port" type="number" class="conn-input" value="8888" style="width:80px" title="TCP port">
-                        <button id="wifi-connect-btn" class="btn btn-connect">Connect</button>
-                    </div>
-                </div>
-            </div>
-        </section>
+<div class="header">
+  <h1>FORCEPLATE</h1>
+  <span class="header-sub">RSL301 · HX711 · ESP32</span>
+  <div class="spacer"></div>
+  <span class="pill" id="status-pill"><span class="dot" id="status-dot"></span><span id="status-text">Disconnected</span></span>
+</div>
 
-        <!-- Load Cell Status -->
-        <section class="loadcells-panel">
-            <div class="loadcells-info">
-                <div class="loadcells-status-group">
-                    <span class="loadcells-label">Load Cells</span>
-                    <span id="loadcells-count" class="loadcells-count">—</span>
-                </div>
-                <span id="loadcells-sim-status" class="loadcells-sim-status"></span>
-                <button id="run-sample-btn" class="btn btn-sample" style="display:none">⚡ Run Sample</button>
-            </div>
-            <div id="loadcell-values" class="loadcell-values-grid" style="display:none">
-                <div class="lc-value-item">
-                    <div class="lc-label">FL</div>
-                    <div id="lc-val-0" class="lc-value">—</div>
-                </div>
-                <div class="lc-value-item">
-                    <div class="lc-label">FR</div>
-                    <div id="lc-val-1" class="lc-value">—</div>
-                </div>
-                <div class="lc-value-item">
-                    <div class="lc-label">BL</div>
-                    <div id="lc-val-2" class="lc-value">—</div>
-                </div>
-                <div class="lc-value-item">
-                    <div class="lc-label">BR</div>
-                    <div id="lc-val-3" class="lc-value">—</div>
-                </div>
-            </div>
-        </section>
+<div class="tabs">
+  <button class="tab active" onclick="switchTab('live')">Live</button>
+  <button class="tab" onclick="switchTab('calibration')">Calibration</button>
+  <button class="tab" onclick="switchTab('about')">About</button>
+</div>
 
-        <!-- Session Control -->
-        <section class="session-control">
-            <button id="start-btn" class="btn btn-start" disabled>▶ Start Session</button>
-            <button id="stop-btn"  class="btn btn-stop"  disabled>■ Stop Session</button>
-            <div class="session-info">
-                <div class="info-item">
-                    <span class="info-label">State</span>
-                    <span id="session-state" class="state-value idle">Idle</span>
-                </div>
-                <div class="info-item">
-                    <span class="info-label">Duration</span>
-                    <span id="session-timer" class="timer-value">0:00</span>
-                </div>
-                <div class="info-item">
-                    <span class="info-label">Balance Score</span>
-                    <span id="balance-score" class="score-value">--</span>
-                </div>
-            </div>
-        </section>
+<!-- LIVE TAB -->
+<div class="panel active" id="panel-live">
+  <div class="controls">
+    <select id="port-select" style="min-width:180px"><option value="">Loading ports…</option></select>
+    <button id="btn-refresh">↻</button>
+    <button id="btn-connect">Connect</button>
+    <button class="btn-green" id="btn-record" disabled>▶ Start Session</button>
+    <button class="btn-red"   id="btn-stop"   disabled>■ Stop &amp; Save CSV</button>
+    <button id="btn-tare"  disabled>Tare All</button>
+    <button id="btn-clear" disabled>Clear Chart</button>
+    <button id="btn-status" disabled>Refresh Status</button>
+  </div>
 
-        <!-- Charts row -->
-        <section class="charts-row">
-            <div class="chart-container">
-                <h3>COP Trajectory</h3>
-                <canvas id="sway-canvas" width="400" height="400"></canvas>
-            </div>
-            <div class="chart-container">
-                <h3>Force Distribution</h3>
-                <canvas id="force-canvas" width="600" height="400"></canvas>
-            </div>
-        </section>
+  <div class="metrics">
+    <div class="metric"><div class="m-label"><span class="m-tag" style="background:var(--fl)"></span>Front-Left</div><div class="m-val c-fl" id="v0">–</div><div class="m-unit">g</div></div>
+    <div class="metric"><div class="m-label"><span class="m-tag" style="background:var(--fr)"></span>Front-Right</div><div class="m-val c-fr" id="v1">–</div><div class="m-unit">g</div></div>
+    <div class="metric"><div class="m-label"><span class="m-tag" style="background:var(--bl)"></span>Back-Left</div><div class="m-val c-bl" id="v2">–</div><div class="m-unit">g</div></div>
+    <div class="metric"><div class="m-label"><span class="m-tag" style="background:var(--br)"></span>Back-Right</div><div class="m-val c-br" id="v3">–</div><div class="m-unit">g</div></div>
+  </div>
 
-        <!-- Metrics row -->
-        <section class="metrics-row">
-            <div class="metric-card">
-                <div class="metric-label">Sway RMS</div>
-                <div id="metric-sway-rms" class="metric-value">--</div>
-                <div class="metric-unit">mm</div>
-            </div>
-            <div class="metric-card">
-                <div class="metric-label">Path Length</div>
-                <div id="metric-path-length" class="metric-value">--</div>
-                <div class="metric-unit">mm</div>
-            </div>
-            <div class="metric-card">
-                <div class="metric-label">Sway Velocity</div>
-                <div id="metric-velocity" class="metric-value">--</div>
-                <div class="metric-unit">mm/s</div>
-            </div>
-            <div class="metric-card">
-                <div class="metric-label">Stability Area</div>
-                <div id="metric-area" class="metric-value">--</div>
-                <div class="metric-unit">mm&sup2;</div>
-            </div>
-            <div class="metric-card">
-                <div class="metric-label">Jerk RMS</div>
-                <div id="metric-jerk" class="metric-value">--</div>
-                <div class="metric-unit">mm/s&sup3;</div>
-            </div>
-            <div class="metric-card">
-                <div class="metric-label">Time in Zone</div>
-                <div id="metric-tiz" class="metric-value">--</div>
-                <div class="metric-unit">%</div>
-            </div>
-            <div class="metric-card">
-                <div class="metric-label">Dominant Freq</div>
-                <div id="metric-freq" class="metric-value">--</div>
-                <div class="metric-unit">Hz</div>
-            </div>
-        </section>
+  <div class="total-row">
+    <div>
+      <div style="font-size:10px;text-transform:uppercase;letter-spacing:.07em;color:var(--text3);margin-bottom:2px">Total Force</div>
+      <span class="total-main" id="v-total">–</span><span class="total-unit"> g</span>
+    </div>
+    <div class="divider-v"></div>
+    <div class="stat-pair" style="text-align:right;margin-left:auto">
+      <span class="stat-label">Sample rate</span><span class="stat-val" id="stat-hz">–</span>
+    </div>
+  </div>
 
-        <!-- Session history -->
-        <section class="history-section">
-            <h3>Session History</h3>
-            <table id="session-table">
-                <thead>
-                    <tr>
-                        <th>Date</th>
-                        <th>Duration</th>
-                        <th>Score</th>
-                        <th>Raw CSV</th>
-                        <th>Processed CSV</th>
-                    </tr>
-                </thead>
-                <tbody id="session-tbody"></tbody>
-            </table>
-        </section>
-    </main>
+  <!-- Stabilogram + Tier 1 metrics -->
+  <div class="card">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+      <span class="card-title">Stabilogram</span>
+      <span style="font-size:11px;color:var(--text3)">Trail: 5 s · 10 Hz LPF</span>
+    </div>
+    <div style="display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap">
+      <canvas id="stabCanvas" width="340" height="340"></canvas>
+      <div class="stab-metrics-panel">
+        <div class="stat-row"><span class="stat-label">COP X (ML)</span><span class="stat-val" id="m-cop-x">–</span><span class="stat-unit">mm</span></div>
+        <div class="stat-row"><span class="stat-label">COP Y (AP)</span><span class="stat-val" id="m-cop-y">–</span><span class="stat-unit">mm</span></div>
+        <hr class="divider-h">
+        <div class="stat-row"><span class="stat-label">Velocity total</span><span class="stat-val" id="m-vel-total">–</span><span class="stat-unit">mm/s</span></div>
+        <div class="stat-row"><span class="stat-label">Velocity AP</span><span class="stat-val" id="m-vel-ap">–</span><span class="stat-unit">mm/s</span></div>
+        <div class="stat-row"><span class="stat-label">Velocity ML</span><span class="stat-val" id="m-vel-ml">–</span><span class="stat-unit">mm/s</span></div>
+        <hr class="divider-h">
+        <div class="stat-row"><span class="stat-label">Sway RMS AP</span><span class="stat-val" id="m-rms-ap">–</span><span class="stat-unit">mm</span></div>
+        <div class="stat-row"><span class="stat-label">Sway RMS ML</span><span class="stat-val" id="m-rms-ml">–</span><span class="stat-unit">mm</span></div>
+        <div class="stat-row"><span class="stat-label">Ellipse area</span><span class="stat-val" id="m-ellipse">–</span><span class="stat-unit">mm²</span></div>
+        <div class="stat-row"><span class="stat-label">Mean COP X</span><span class="stat-val" id="m-mean-x">–</span><span class="stat-unit">mm</span></div>
+        <div class="stat-row"><span class="stat-label">Mean COP Y</span><span class="stat-val" id="m-mean-y">–</span><span class="stat-unit">mm</span></div>
+      </div>
+    </div>
+  </div>
 
-    <script src="charts.js"></script>
-    <script src="dashboard.js"></script>
+  <!-- Tier 2 metrics -->
+  <div class="metrics" style="grid-template-columns:repeat(5,minmax(0,1fr));margin-bottom:10px">
+    <div class="metric"><div class="m-label">Path Length</div><div class="m-val" id="m-path">–</div><div class="m-unit">mm</div></div>
+    <div class="metric"><div class="m-label">Range AP</div><div class="m-val" id="m-range-ap">–</div><div class="m-unit">mm</div></div>
+    <div class="metric"><div class="m-label">Range ML</div><div class="m-val" id="m-range-ml">–</div><div class="m-unit">mm</div></div>
+    <div class="metric"><div class="m-label">MDIST</div><div class="m-val" id="m-mdist">–</div><div class="m-unit">mm</div></div>
+    <div class="metric"><div class="m-label">MAXDIST</div><div class="m-val" id="m-maxdist">–</div><div class="m-unit">mm</div></div>
+  </div>
+
+  <div class="card">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+      <span class="card-title">Force over time</span>
+      <span style="font-size:11px;color:var(--text3)">last 300 samples</span>
+    </div>
+    <div class="chart-wrap"><canvas id="forceChart"></canvas></div>
+  </div>
+
+  <div class="session-stats">
+    <span class="ss-item">Samples: <strong id="ss-n">0</strong></span>
+    <span class="ss-item">Duration: <strong id="ss-dur">–</strong></span>
+    <span class="ss-item">Peak total: <strong id="ss-peak">–</strong> g</span>
+    <span class="ss-item">Avg total: <strong id="ss-avg">–</strong> g</span>
+  </div>
+
+  <div class="log" id="log"></div>
+</div>
+
+<!-- CALIBRATION TAB -->
+<div class="panel" id="panel-calibration">
+  <div id="cal-status-grid" class="cal-grid"></div>
+
+  <div id="wizard-wrap" style="display:none">
+    <div class="wizard" id="wizard">
+      <div id="wiz-header"></div>
+      <div class="wizard-title" id="wiz-title"></div>
+      <div class="wizard-sub"  id="wiz-sub"></div>
+      <div class="wizard-steps">
+        <div class="wstep" id="ws0"></div>
+        <div class="wstep" id="ws1"></div>
+        <div class="wstep" id="ws2"></div>
+      </div>
+      <div class="wizard-action" id="wiz-action"></div>
+    </div>
+  </div>
+
+  <div class="controls" style="margin-top:4px">
+    <button id="btn-cal-all" disabled>Calibrate all cells</button>
+    <button id="btn-reset-all" class="btn-red" disabled>Reset all calibration</button>
+  </div>
+
+  <div class="log" id="cal-log" style="height:120px"></div>
+</div>
+
+<!-- ABOUT TAB -->
+<div class="panel" id="panel-about">
+  <div class="card">
+    <div class="card-title">Serial Protocol</div>
+    <p style="font-size:12px;color:var(--text2);line-height:1.8;font-family:var(--mono)">
+      Baud: 115200<br>
+      Posting: <span style="color:var(--text)">[&lt;ms&gt;ms] FL:&lt;g&gt; FR:&lt;g&gt; BL:&lt;g&gt; BR:&lt;g&gt; TOTAL:&lt;g&gt;</span><br>
+      Status:  <span style="color:var(--text)">[STATUS] {json}</span><br>
+      Cal:     <span style="color:var(--text)">[CAL:&lt;idx&gt;] STEP:1/2/3 …</span><br>
+      Done:    <span style="color:var(--text)">[CAL:&lt;idx&gt;] DONE</span>
+    </p>
+  </div>
+  <div class="card">
+    <div class="card-title">CSV format</div>
+    <p style="font-size:12px;color:var(--text2);line-height:1.8;font-family:var(--mono)">
+      timestamp, elapsed_s, fl_g, fr_g, bl_g, br_g, total_g, cop_x_mm, cop_y_mm
+    </p>
+  </div>
+  <div class="card">
+    <div class="card-title">Calibration method</div>
+    <p style="font-size:12px;color:var(--text2);line-height:1.7">
+      Per-cell calibration: zero load (offset) + one or two known weights placed directly
+      over each corner. Scale factor = raw_tared / known_g. A second weight verifies linearity —
+      if the two scale factors differ by &gt;5% the firmware warns of cell nonlinearity.
+      All values persist to EEPROM and survive power cycles. EEPROM is wiped on every flash.
+    </p>
+  </div>
+</div>
+
+<script>
+'use strict';
+
+// ---------------------------------------------------------------------------
+// Elements
+// ---------------------------------------------------------------------------
+const portSelect   = document.getElementById('port-select');
+const btnRefresh   = document.getElementById('btn-refresh');
+const btnConnect   = document.getElementById('btn-connect');
+const btnRecord    = document.getElementById('btn-record');
+const btnStop      = document.getElementById('btn-stop');
+const btnTare      = document.getElementById('btn-tare');
+const btnClear     = document.getElementById('btn-clear');
+const btnStatus    = document.getElementById('btn-status');
+const statusDot    = document.getElementById('status-dot');
+const statusText   = document.getElementById('status-text');
+const vTotal       = document.getElementById('v-total');
+const statHz       = document.getElementById('stat-hz');
+const ssN          = document.getElementById('ss-n');
+const ssDur        = document.getElementById('ss-dur');
+const ssPeak       = document.getElementById('ss-peak');
+const ssAvg        = document.getElementById('ss-avg');
+const logEl        = document.getElementById('log');
+const calLog       = document.getElementById('cal-log');
+const cornerVals   = [0, 1, 2, 3].map(i => document.getElementById(`v${i}`));
+
+const stabCanvas   = document.getElementById('stabCanvas');
+const stabCtx      = stabCanvas ? stabCanvas.getContext('2d') : null;
+
+// ---------------------------------------------------------------------------
+// State
+// ---------------------------------------------------------------------------
+let connected     = false;
+let postingMode   = false;
+let sessionActive = false;
+let timerHandle   = null;
+let timerStart    = 0;
+
+let lastFrameTime = 0;
+let frameCount    = 0;
+let hzAccum       = 0;
+let hzSamples     = 0;
+
+let sessionSamples  = 0;
+let sessionPeak     = 0;
+let sessionTotalAcc = 0;
+
+const TRAIL_SECONDS = 5;
+let trailBuffer  = [];
+let lastMetrics  = null;
+let plateWidthMm  = 339.411;
+let plateHeightMm = 339.411;
+
+const CHART_MAX = 300;
+const chartLabels = [];
+const chartDatasets = [
+  { label: 'FL', borderColor: '#60a5fa', data: [], pointRadius: 0, borderWidth: 1.5, tension: 0.2 },
+  { label: 'FR', borderColor: '#4ade80', data: [], pointRadius: 0, borderWidth: 1.5, tension: 0.2 },
+  { label: 'BL', borderColor: '#fbbf24', data: [], pointRadius: 0, borderWidth: 1.5, tension: 0.2 },
+  { label: 'BR', borderColor: '#f87171', data: [], pointRadius: 0, borderWidth: 1.5, tension: 0.2 },
+];
+
+let forceChart = null;
+const chartCanvas = document.getElementById('forceChart');
+if (chartCanvas && window.Chart) {
+  forceChart = new Chart(chartCanvas, {
+    type: 'line',
+    data: { labels: chartLabels, datasets: chartDatasets },
+    options: {
+      animation: false,
+      responsive: true,
+      maintainAspectRatio: false,
+      scales: {
+        x: { display: false },
+        y: {
+          grid: { color: 'rgba(255,255,255,0.05)' },
+          ticks: { color: '#55555c', font: { family: 'IBM Plex Mono', size: 10 } },
+        },
+      },
+      plugins: { legend: { display: false } },
+    },
+  });
+}
+
+// ---------------------------------------------------------------------------
+// WebSocket
+// ---------------------------------------------------------------------------
+const ws = new WebSocket('ws://localhost:8080');
+
+ws.onmessage = (ev) => {
+  let msg;
+  try { msg = JSON.parse(ev.data); } catch { return; }
+  if (msg.type === 'status')  handleStatus(msg.data);
+  else if (msg.type === 'frame') handleFrame(msg.data);
+  else if (msg.type === 'raw')   handleRawLine(msg.line);
+};
+
+ws.onerror = () => appendLog('WebSocket error — is the server running?', 'err');
+
+// ---------------------------------------------------------------------------
+// Status handler
+// ---------------------------------------------------------------------------
+function handleStatus(s) {
+  if (!s || typeof s.status !== 'string') return;
+
+  if (s.plate_width_mm)  plateWidthMm  = s.plate_width_mm;
+  if (s.plate_height_mm) plateHeightMm = s.plate_height_mm;
+
+  switch (s.status) {
+    case 'connected':
+      connected = true;
+      setStatusPill(true, `Connected · ${s.port ?? ''}`);
+      appendLog(`Connected on ${s.port}`, 'ok');
+      enableConnectedButtons(true);
+      break;
+    case 'disconnected':
+      connected = postingMode = sessionActive = false;
+      stopTimer();
+      setStatusPill(false, 'Not connected');
+      appendLog(`Disconnected${s.reason ? ': ' + s.reason : ''}`, s.reason ? 'err' : '');
+      enableConnectedButtons(false);
+      clearStabilogram();
+      break;
+    case 'posting_mode':
+      postingMode = true;
+      appendLog('Posting mode active', 'ok');
+      updateSessionButtons();
+      break;
+    case 'recording':
+      sessionActive = true;
+      sessionSamples = 0; sessionPeak = 0; sessionTotalAcc = 0;
+      startTimer();
+      updateSessionButtons();
+      appendLog('Recording started', 'ok');
+      break;
+    case 'idle':
+      sessionActive = false;
+      stopTimer();
+      updateSessionButtons();
+      clearStabilogram();
+      break;
+    case 'cal_mode':
+      postingMode = false;
+      updateSessionButtons();
+      break;
+  }
+
+  if (s.cells) updateCalPanel(s);
+}
+
+// ---------------------------------------------------------------------------
+// Frame handler
+// ---------------------------------------------------------------------------
+function handleFrame(frame) {
+  if (!frame) return;
+
+  const forces = [frame.f0, frame.f1, frame.f2, frame.f3];
+  forces.forEach((v, i) => {
+    if (cornerVals[i]) cornerVals[i].textContent = v != null ? Math.round(v) : '–';
+  });
+
+  const fz = frame.fz;
+  if (vTotal) vTotal.textContent = fz != null ? Math.round(fz) : '–';
+
+  const cx = frame.copXFiltered;
+  const cy = frame.copYFiltered;
+  setText('m-cop-x', cx != null ? cx.toFixed(1) : '–');
+  setText('m-cop-y', cy != null ? cy.toFixed(1) : '–');
+
+  if (cx != null && cy != null && frame.timestamp != null) {
+    trailBuffer.push({ x: cx, y: cy, t: frame.timestamp });
+    const cutoff = frame.timestamp - TRAIL_SECONDS * 1000;
+    let i = 0;
+    while (i < trailBuffer.length && trailBuffer[i].t < cutoff) i++;
+    if (i > 0) trailBuffer.splice(0, i);
+  }
+
+  if (frame.metrics) {
+    lastMetrics = frame.metrics;
+    updateMetricsDisplay(frame.metrics);
+  }
+
+  drawStabilogram();
+
+  if (forceChart) {
+    chartLabels.push('');
+    chartDatasets[0].data.push(frame.f0 ?? 0);
+    chartDatasets[1].data.push(frame.f1 ?? 0);
+    chartDatasets[2].data.push(frame.f2 ?? 0);
+    chartDatasets[3].data.push(frame.f3 ?? 0);
+    if (chartLabels.length > CHART_MAX) {
+      chartLabels.shift();
+      chartDatasets.forEach(d => d.data.shift());
+    }
+    forceChart.update('none');
+  }
+
+  const now = performance.now();
+  if (lastFrameTime > 0) {
+    const dt = now - lastFrameTime;
+    if (dt > 0) {
+      hzAccum += 1000 / dt;
+      hzSamples++;
+      if (hzSamples >= 20) {
+        if (statHz) statHz.textContent = (hzAccum / hzSamples).toFixed(0) + ' Hz';
+        hzAccum = 0; hzSamples = 0;
+      }
+    }
+  }
+  lastFrameTime = now;
+
+  if (sessionActive) {
+    sessionSamples++;
+    if (fz != null) {
+      if (fz > sessionPeak) sessionPeak = fz;
+      sessionTotalAcc += fz;
+    }
+    if (ssN)    ssN.textContent    = sessionSamples;
+    if (ssPeak) ssPeak.textContent = Math.round(sessionPeak);
+    if (ssAvg)  ssAvg.textContent  = Math.round(sessionTotalAcc / sessionSamples);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Metrics display
+// ---------------------------------------------------------------------------
+function updateMetricsDisplay(m) {
+  setText('m-vel-total', m.swayVelocity   != null ? m.swayVelocity.toFixed(1)   : '–');
+  setText('m-vel-ap',    m.swayVelocity_AP != null ? m.swayVelocity_AP.toFixed(1) : '–');
+  setText('m-vel-ml',    m.swayVelocity_ML != null ? m.swayVelocity_ML.toFixed(1) : '–');
+  setText('m-rms-ap',    m.swayRMS_AP  != null ? m.swayRMS_AP.toFixed(2)  : '–');
+  setText('m-rms-ml',    m.swayRMS_ML  != null ? m.swayRMS_ML.toFixed(2)  : '–');
+  setText('m-ellipse',   m.stabilityArea != null ? m.stabilityArea.toFixed(0) : '–');
+  setText('m-mean-x',    m.meanCopX != null ? m.meanCopX.toFixed(1) : '–');
+  setText('m-mean-y',    m.meanCopY != null ? m.meanCopY.toFixed(1) : '–');
+  setText('m-path',      m.pathLength != null ? m.pathLength.toFixed(0) : '–');
+  setText('m-range-ap',  m.rangeAP    != null ? m.rangeAP.toFixed(1)    : '–');
+  setText('m-range-ml',  m.rangeML    != null ? m.rangeML.toFixed(1)    : '–');
+  setText('m-mdist',     m.mdist      != null ? m.mdist.toFixed(2)      : '–');
+  setText('m-maxdist',   m.maxdist    != null ? m.maxdist.toFixed(2)    : '–');
+}
+
+// ---------------------------------------------------------------------------
+// Stabilogram canvas renderer
+// ---------------------------------------------------------------------------
+function mmToCanvas(xMm, yMm, W, H, scaleX, scaleY) {
+  return { cx: W / 2 + xMm * scaleX, cy: H / 2 - yMm * scaleY };
+}
+
+function drawStabilogram() {
+  if (!stabCtx) return;
+  const W = stabCanvas.width, H = stabCanvas.height, PAD = 28;
+  const scaleX = (W / 2 - PAD) / (plateWidthMm  / 2);
+  const scaleY = (H / 2 - PAD) / (plateHeightMm / 2);
+
+  stabCtx.clearRect(0, 0, W, H);
+
+  const tl = mmToCanvas(-plateWidthMm / 2,  plateHeightMm / 2, W, H, scaleX, scaleY);
+  const br = mmToCanvas( plateWidthMm / 2, -plateHeightMm / 2, W, H, scaleX, scaleY);
+  stabCtx.strokeStyle = 'rgba(255,255,255,0.10)';
+  stabCtx.lineWidth = 1;
+  stabCtx.strokeRect(tl.cx, tl.cy, br.cx - tl.cx, br.cy - tl.cy);
+
+  stabCtx.fillStyle = 'rgba(255,255,255,0.18)';
+  stabCtx.font = '10px IBM Plex Mono, monospace';
+  stabCtx.fillText('FL', tl.cx + 6, tl.cy + 13);
+  stabCtx.fillText('FR', br.cx - 22, tl.cy + 13);
+  stabCtx.fillText('BL', tl.cx + 6, br.cy - 5);
+  stabCtx.fillText('BR', br.cx - 22, br.cy - 5);
+
+  stabCtx.strokeStyle = 'rgba(255,255,255,0.12)';
+  stabCtx.lineWidth = 1;
+  stabCtx.setLineDash([4, 5]);
+  stabCtx.beginPath(); stabCtx.moveTo(W / 2, PAD);   stabCtx.lineTo(W / 2, H - PAD); stabCtx.stroke();
+  stabCtx.beginPath(); stabCtx.moveTo(PAD, H / 2);   stabCtx.lineTo(W - PAD, H / 2); stabCtx.stroke();
+  stabCtx.setLineDash([]);
+
+  if (lastMetrics && lastMetrics.ellipseParams) {
+    const ep = lastMetrics.ellipseParams;
+    const ex = W / 2 + ep.centerX * scaleX, ey = H / 2 - ep.centerY * scaleY;
+    const aRad = ep.semiAxisA * scaleX, bRad = ep.semiAxisB * scaleY;
+    const ang = -ep.angle * Math.PI / 180;
+    stabCtx.save();
+    stabCtx.translate(ex, ey);
+    stabCtx.rotate(ang);
+    stabCtx.beginPath();
+    stabCtx.ellipse(0, 0, Math.max(aRad, 1), Math.max(bRad, 1), 0, 0, Math.PI * 2);
+    stabCtx.strokeStyle = 'rgba(96,165,250,0.45)';
+    stabCtx.lineWidth = 1.5;
+    stabCtx.stroke();
+    stabCtx.fillStyle = 'rgba(96,165,250,0.06)';
+    stabCtx.fill();
+    stabCtx.restore();
+  }
+
+  const N = trailBuffer.length;
+  for (let i = 0; i < N - 1; i++) {
+    const alpha = 0.06 + 0.52 * (i / Math.max(N - 1, 1));
+    const p = mmToCanvas(trailBuffer[i].x, trailBuffer[i].y, W, H, scaleX, scaleY);
+    stabCtx.beginPath();
+    stabCtx.arc(p.cx, p.cy, 1.5, 0, Math.PI * 2);
+    stabCtx.fillStyle = `rgba(148,163,184,${alpha.toFixed(2)})`;
+    stabCtx.fill();
+  }
+
+  if (N > 0) {
+    const last = trailBuffer[N - 1];
+    const lp = mmToCanvas(last.x, last.y, W, H, scaleX, scaleY);
+    stabCtx.beginPath();
+    stabCtx.arc(lp.cx, lp.cy, 5, 0, Math.PI * 2);
+    stabCtx.fillStyle = '#4ade80';
+    stabCtx.shadowColor = '#4ade80';
+    stabCtx.shadowBlur = 10;
+    stabCtx.fill();
+    stabCtx.shadowBlur = 0;
+  }
+}
+
+function clearStabilogram() {
+  trailBuffer = []; lastMetrics = null;
+  if (stabCtx) stabCtx.clearRect(0, 0, stabCanvas.width, stabCanvas.height);
+  ['m-cop-x','m-cop-y','m-vel-total','m-vel-ap','m-vel-ml',
+   'm-rms-ap','m-rms-ml','m-ellipse','m-mean-x','m-mean-y',
+   'm-path','m-range-ap','m-range-ml','m-mdist','m-maxdist'].forEach(id => setText(id, '–'));
+}
+
+// ---------------------------------------------------------------------------
+// Raw serial line passthrough (calibration wizard)
+// ---------------------------------------------------------------------------
+function handleRawLine(line) {
+  if (!line) return;
+  const cls = line.startsWith('[CAL') ? 'log-warn' :
+              line.startsWith('[INFO]') ? '' :
+              line.includes('ERR') ? 'log-err' : '';
+  appendCalLog(line, cls);
+  if (line.startsWith('[STATUS]')) {
+    try {
+      const s = JSON.parse(line.slice(8).trim());
+      if (s.cells) updateCalPanel(s);
+    } catch { /* ignore */ }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Calibration panel
+// ---------------------------------------------------------------------------
+function updateCalPanel(s) {
+  const grid = document.getElementById('cal-status-grid');
+  if (!grid || !Array.isArray(s.cells)) return;
+  const names = ['FL', 'FR', 'BL', 'BR'];
+  grid.innerHTML = s.cells.map((c, i) => {
+    const badgeCls = !c.connected ? 'badge-red' : c.calibrated ? 'badge-green' : 'badge-amber';
+    const badgeTxt = !c.connected ? 'No signal' : c.calibrated ? 'Calibrated' : 'Uncalibrated';
+    return `<div class="cal-cell">
+      <div class="cal-cell-name c-${names[i].toLowerCase()}">${c.name ?? names[i]}</div>
+      <div class="cal-cell-status"><span class="badge ${badgeCls}">${badgeTxt}</span></div>
+      <div class="cal-cell-detail">
+        Scale: ${c.scale != null ? c.scale.toFixed(2) : '–'}<br>
+        Offset: ${c.offset ?? '–'}<br>
+        2-point: ${c.twoPoint ? 'yes' : 'no'}
+      </div>
+    </div>`;
+  }).join('');
+  const btnCalAll   = document.getElementById('btn-cal-all');
+  const btnResetAll = document.getElementById('btn-reset-all');
+  if (btnCalAll)   btnCalAll.disabled   = !connected;
+  if (btnResetAll) btnResetAll.disabled = !connected;
+}
+
+// ---------------------------------------------------------------------------
+// UI helpers
+// ---------------------------------------------------------------------------
+function setText(id, val) {
+  const el = document.getElementById(id);
+  if (el) el.textContent = val;
+}
+
+function setStatusPill(on, text) {
+  if (statusDot)  statusDot.className  = on ? 'dot on' : 'dot';
+  if (statusText) statusText.textContent = text;
+}
+
+function enableConnectedButtons(on) {
+  [btnTare, btnStatus].forEach(b => { if (b) b.disabled = !on; });
+  updateSessionButtons();
+}
+
+function updateSessionButtons() {
+  if (btnRecord) btnRecord.disabled = !(connected && !sessionActive);
+  if (btnStop)   btnStop.disabled   = !sessionActive;
+}
+
+function startTimer() {
+  timerStart = Date.now();
+  timerHandle = setInterval(() => {
+    const elapsed = Math.floor((Date.now() - timerStart) / 1000);
+    const mm = String(Math.floor(elapsed / 60)).padStart(2, '0');
+    const ss = String(elapsed % 60).padStart(2, '0');
+    if (ssDur) ssDur.textContent = `${mm}:${ss}`;
+  }, 500);
+}
+
+function stopTimer() {
+  clearInterval(timerHandle);
+  timerHandle = null;
+  if (ssDur) ssDur.textContent = '–';
+}
+
+function appendLog(msg, cls) {
+  if (!logEl) return;
+  const line = document.createElement('div');
+  line.className = 'log-line' + (cls ? ' log-' + cls : '');
+  line.textContent = msg;
+  logEl.appendChild(line);
+  logEl.scrollTop = logEl.scrollHeight;
+  while (logEl.children.length > 200) logEl.removeChild(logEl.firstChild);
+}
+
+function appendCalLog(msg, cls) {
+  if (!calLog) return;
+  const line = document.createElement('div');
+  line.className = 'log-line' + (cls ? ' ' + cls : '');
+  line.textContent = msg;
+  calLog.appendChild(line);
+  calLog.scrollTop = calLog.scrollHeight;
+  while (calLog.children.length > 500) calLog.removeChild(calLog.firstChild);
+}
+
+// ---------------------------------------------------------------------------
+// Port listing
+// ---------------------------------------------------------------------------
+async function loadPorts() {
+  if (portSelect) portSelect.innerHTML = '<option value="">Loading…</option>';
+  try {
+    const ports = await fetch('/api/ports').then(r => r.json());
+    if (portSelect) {
+      portSelect.innerHTML = ports.length
+        ? ports.map(p => `<option value="${p.path}">${p.path}${p.manufacturer ? ' — ' + p.manufacturer : ''}</option>`).join('')
+        : '<option value="">No ports found</option>';
+    }
+  } catch {
+    if (portSelect) portSelect.innerHTML = '<option value="">Error loading ports</option>';
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Button handlers
+// ---------------------------------------------------------------------------
+if (btnRefresh) btnRefresh.onclick = loadPorts;
+
+if (btnConnect) btnConnect.onclick = async () => {
+  const port = portSelect ? portSelect.value : '';
+  if (!port) return;
+  btnConnect.disabled = true;
+  try {
+    const res = await fetch('/api/connect', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ port }),
+    });
+    if (!res.ok) {
+      const err = await res.json();
+      appendLog(`Connect failed: ${err.error}`, 'err');
+      btnConnect.disabled = false;
+    }
+  } catch {
+    appendLog('Connect failed', 'err');
+    btnConnect.disabled = false;
+  }
+};
+
+if (btnRecord) btnRecord.onclick = async () => {
+  btnRecord.disabled = true;
+  await fetch('/api/session/start', { method: 'POST' });
+};
+
+if (btnStop) btnStop.onclick = async () => {
+  btnStop.disabled = true;
+  try {
+    const res = await fetch('/api/session/stop', { method: 'POST' });
+    if (res.ok) {
+      const { sessionId, samples } = await res.json();
+      appendLog(`Session saved: ${sessionId} (${samples} samples)`, 'ok');
+      appendLog(`Download CSV: /api/sessions/${sessionId}/csv`, 'ok');
+    }
+  } catch {
+    appendLog('Stop session failed', 'err');
+  }
+};
+
+if (btnTare) btnTare.onclick = async () => {
+  await fetch('/api/cmd', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ cmd: 't' }) });
+  appendLog('Tare sent', '');
+};
+
+if (btnStatus) btnStatus.onclick = async () => {
+  await fetch('/api/cmd', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ cmd: 's' }) });
+};
+
+if (btnClear) btnClear.onclick = () => {
+  if (forceChart) {
+    chartLabels.length = 0;
+    chartDatasets.forEach(d => { d.data.length = 0; });
+    forceChart.update('none');
+  }
+};
+
+const btnCalAll   = document.getElementById('btn-cal-all');
+const btnResetAll = document.getElementById('btn-reset-all');
+
+if (btnCalAll) btnCalAll.onclick = async () => {
+  await fetch('/api/cmd', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ cmd: 'c' }) });
+  appendCalLog('Calibration sequence started — follow prompts in serial console', 'log-warn');
+};
+
+if (btnResetAll) btnResetAll.onclick = async () => {
+  if (!confirm('Reset ALL calibration? This cannot be undone.')) return;
+  await fetch('/api/cmd', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ cmd: 'x' }) });
+  appendCalLog('Calibration reset sent', 'log-warn');
+};
+
+// ---------------------------------------------------------------------------
+// Tab switching
+// ---------------------------------------------------------------------------
+function switchTab(name) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  document.getElementById('panel-' + name)?.classList.add('active');
+  document.querySelectorAll('.tab').forEach(t => {
+    if (t.getAttribute('onclick') === `switchTab('${name}')`) t.classList.add('active');
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Init
+// ---------------------------------------------------------------------------
+loadPorts();
+updateSessionButtons();
+drawStabilogram();
+</script>
 </body>
 </html>

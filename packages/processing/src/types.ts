@@ -10,6 +10,22 @@ export interface RawForceData {
   f2: number;
   /** Back-right load cell (raw ADC counts) */
   f3: number;
+  /** Optional packet sequence number (for drop detection) */
+  seq?: number;
+}
+
+/** 95% confidence ellipse parameters for COP visualization */
+export interface EllipseParams {
+  /** Ellipse center X (mm) */
+  centerX: number;
+  /** Ellipse center Y (mm) */
+  centerY: number;
+  /** Semi-axis A length (mm) */
+  semiAxisA: number;
+  /** Semi-axis B length (mm) */
+  semiAxisB: number;
+  /** Rotation angle (degrees) */
+  angle: number;
 }
 
 /** Balance metrics computed over a sliding window */
@@ -20,8 +36,30 @@ export interface BalanceMetrics {
   pathLength: number;
   /** Mean COP velocity (mm/s) */
   swayVelocity: number;
+  /** Mean COP velocity in anterior-posterior (Y) direction (mm/s) */
+  swayVelocity_AP: number;
+  /** Mean COP velocity in medio-lateral (X) direction (mm/s) */
+  swayVelocity_ML: number;
+  /** RMS sway in anterior-posterior (Y) axis (mm) */
+  swayRMS_AP: number;
+  /** RMS sway in medio-lateral (X) axis (mm) */
+  swayRMS_ML: number;
+  /** Mean COP X position from plate center — positive = right (mm) */
+  meanCopX: number;
+  /** Mean COP Y position from plate center — positive = front (mm) */
+  meanCopY: number;
+  /** COP range in AP axis: max(copY) − min(copY) (mm) */
+  rangeAP: number;
+  /** COP range in ML axis: max(copX) − min(copX) (mm) */
+  rangeML: number;
+  /** Mean distance of COP from centroid (mm) */
+  mdist: number;
+  /** Maximum distance of COP from centroid (mm) */
+  maxdist: number;
   /** 95% confidence ellipse area (mm²) */
   stabilityArea: number;
+  /** 95% confidence ellipse parameters for visualization */
+  ellipseParams?: EllipseParams;
   /** FFT-based frequency features */
   frequencyFeatures: FrequencyFeatures;
   /** RMS jerk of COP velocity (mm/s³) */
@@ -50,6 +88,8 @@ export interface FrequencyFeatures {
 export interface ProcessedFrame {
   /** Timestamp in ms */
   timestamp: number;
+  /** Packet sequence number from firmware (undefined if firmware doesn't send it) */
+  seq?: number;
   /** Raw COP X position (mm from center, positive = right) */
   copX: number;
   /** Raw COP Y position (mm from center, positive = front) */
@@ -126,12 +166,12 @@ export interface ScoreWeights {
 /** Default pipeline configuration */
 export const DEFAULT_CONFIG: PipelineConfig = {
   sampleRate: 40,
-  lpfCutoff: 5.0,
+  lpfCutoff: 10.0,
   stabilityThreshold: 10.0,  // mm from center
   metricsInterval: 4,         // every 4 samples = 10 Hz at 40 Hz sample rate
   metricsWindowSize: 400,     // 10 seconds at 40 Hz
-  plateWidth: 500,            // mm
-  plateHeight: 500,           // mm
+  plateWidth: 339.411,        // mm — RSL301 corner spacing
+  plateHeight: 339.411,       // mm — RSL301 corner spacing
   warmupMs: 2000,             // 2 second warmup to discard step-on artifact
   scoreWeights: {
     swayRMS: 0.25,

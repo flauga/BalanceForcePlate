@@ -32,13 +32,20 @@ export function parseSerialLine(line: string): RawForceData | null {
       return null;
     }
 
-    return {
+    const result: RawForceData = {
       t: obj.t,
       f0: obj.f0,
       f1: obj.f1,
       f2: obj.f2,
       f3: obj.f3,
     };
+
+    // Optional packet sequence number (for drop detection)
+    if (typeof obj.seq === 'number') {
+      result.seq = obj.seq;
+    }
+
+    return result;
   } catch {
     return null;
   }
