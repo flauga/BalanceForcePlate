@@ -35,24 +35,34 @@
 #define SERIAL_BAUD  115200
 
 // ---------------------------------------------------------------------------
-// WiFi / TCP (optional)
+// Load cell connectivity
 // ---------------------------------------------------------------------------
-#define WIFI_TCP_PORT    8888
-#define WIFI_HOSTNAME    "force-plate"   // reachable as force-plate.local via mDNS
+#define NUM_CELLS                  4
+#define LOADCELLS_CHANNEL_COUNT    4
 
 // ---------------------------------------------------------------------------
-// Load cell connectivity (overridable via loadcell_config.h)
+// Calibration (NVS persistent storage)
 // ---------------------------------------------------------------------------
-// How many of the 4 HX711 channels have a physical load cell wired up.
-// Set LOADCELLS_CONNECTED_COUNT to the actual count in loadcell_config.h.
-// The firmware broadcasts this on startup so the dashboard can show status.
-#define LOADCELLS_CONNECTED_COUNT  0
-#define LOADCELLS_CHANNEL_COUNT    4
+#define CAL_NVS_NAMESPACE   "cal"
+#define CAL_NVS_KEY         "data3"   // bumped from "data2" to invalidate stale zero-offset blob
+#define CAL_NVS_MODE_KEY    "mode"
+#define CAL_VALID_MARKER    0xCA
+#define CAL_OFFSET_MIN      -8000000L
+#define CAL_OFFSET_MAX       8000000L
+#define CAL_SCALE_MIN        0.001f
+#define CAL_SCALE_MAX        100000.0f
+#define CAL_TARE_SAMPLES     20
+
+// ---------------------------------------------------------------------------
+// Bluetooth reliability
+// ---------------------------------------------------------------------------
+#define BT_WRITE_FAIL_THRESHOLD  10
+#define BT_LINK_TIMEOUT_MS       5000
 
 // ---------------------------------------------------------------------------
 // Force plate geometry
 // ---------------------------------------------------------------------------
-// Straight-line distance between left and right cell mounting points (mm)
-#define PLATE_WIDTH_MM   500
-// Straight-line distance between front and back cell mounting points (mm)
-#define PLATE_HEIGHT_MM  500
+// Straight-line distance between left and right RSL301 cell mounting points (mm)
+#define PLATE_WIDTH_MM   339.411f
+// Straight-line distance between front and back RSL301 cell mounting points (mm)
+#define PLATE_HEIGHT_MM  339.411f

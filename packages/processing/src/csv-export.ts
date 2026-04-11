@@ -46,26 +46,16 @@ const PROCESSED_HEADER = [
   'session_state',
   // Metrics (empty when not computed for this frame)
   'sway_rms_mm', 'path_length_mm', 'sway_velocity_mms',
-  'stability_area_mm2', 'jerk_rms', 'time_in_zone_pct',
-  'dominant_freq_hz', 'mean_freq_hz',
-  'low_band_power', 'mid_band_power', 'high_band_power',
-  'balance_score',
+  'stability_area_mm2', 'balance_score',
 ].join(',');
 
 function metricsFields(m: BalanceMetrics | null): string {
-  if (!m) return ',,,,,,,,,,,';
+  if (!m) return ',,,,';
   return [
     m.swayRMS.toFixed(4),
     m.pathLength.toFixed(4),
     m.swayVelocity.toFixed(4),
     m.stabilityArea.toFixed(4),
-    m.jerkRMS.toFixed(4),
-    (m.timeInZone * 100).toFixed(2),
-    m.frequencyFeatures.dominantFrequency.toFixed(4),
-    m.frequencyFeatures.meanFrequency.toFixed(4),
-    m.frequencyFeatures.lowBandPower.toFixed(6),
-    m.frequencyFeatures.midBandPower.toFixed(6),
-    m.frequencyFeatures.highBandPower.toFixed(6),
     m.balanceScore.toFixed(2),
   ].join(',');
 }

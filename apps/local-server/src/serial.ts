@@ -47,6 +47,10 @@ function parsePostingLine(line: string): RawForceData | null {
   const total = totalM ? parseFloat(totalM[1]) : fl + fr + bl + br;
 
   if (isNaN(fl) || isNaN(fr) || isNaN(bl) || isNaN(br)) return null;
+  // Reject frames where any cell reads exactly 0 but others have significant force
+  // (indicates an HX711 timeout, not a real measurement)
+  const hasZero = fl === 0 || fr === 0 || bl === 0 || br === 0;
+  if (hasZero && total > 50) return null;
   return { t, fl, fr, bl, br, total };
 }
 

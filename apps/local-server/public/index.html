@@ -37,7 +37,7 @@
 }
 * { box-sizing: border-box; margin: 0; padding: 0; }
 html { background: var(--bg); color: var(--text); font-family: var(--font); font-size: 14px; }
-body { max-width: 900px; margin: 0 auto; padding: 20px 16px 60px; }
+body { max-width: 1600px; margin: 0 auto; padding: 20px 24px 60px; }
 
 .header { display: flex; align-items: center; gap: 10px; margin-bottom: 20px; }
 .header h1 { font-size: 15px; font-weight: 600; letter-spacing: .04em; }
@@ -102,12 +102,15 @@ select option { background: var(--bg3); }
 
 .divider-h  { height: 1px; background: var(--border); margin: 6px 0; border: none; }
 .stat-unit  { font-size: 10px; color: var(--text3); font-family: var(--mono); }
-#stabCanvas { display: block; border-radius: var(--r); background: var(--bg3); border: 1px solid var(--border); cursor: crosshair; flex-shrink: 0; }
-.stab-metrics-panel { display: flex; flex-direction: column; gap: 5px; min-width: 168px; }
-.stat-row { display: flex; align-items: baseline; gap: 4px; }
-.stat-row .stat-label { flex: 1; font-size: 10px; text-transform: uppercase; letter-spacing: .06em; color: var(--text3); }
-.stat-row .stat-val   { font-size: 13px; font-weight: 500; font-family: var(--mono); color: var(--text); min-width: 52px; text-align: right; }
-.stat-row .stat-unit  { font-size: 10px; color: var(--text3); font-family: var(--mono); min-width: 28px; }
+.stab-row { display: flex; gap: 14px; align-items: flex-start; }
+#stabCanvas { display: block; border-radius: var(--r); background: var(--bg3); border: 1px solid var(--border); cursor: crosshair; flex: 1 1 0; min-width: 0; aspect-ratio: 1; }
+.stab-big-metrics { display: flex; flex-direction: column; gap: 8px; width: 200px; flex-shrink: 0; }
+.sbm { background: var(--bg3); border: 1px solid var(--border); border-radius: var(--r2); padding: 12px 14px; }
+.sbm-label { font-size: 10px; font-weight: 500; text-transform: uppercase; letter-spacing: .08em; color: var(--text3); margin-bottom: 6px; }
+.sbm-val   { font-size: 28px; font-weight: 500; font-family: var(--mono); line-height: 1; color: var(--text); }
+.sbm-unit  { font-size: 11px; color: var(--text3); font-family: var(--mono); margin-top: 3px; }
+.sbm-sub   { font-size: 11px; color: var(--text3); font-family: var(--mono); margin-top: 4px; display: flex; gap: 8px; }
+.sbm-score { font-size: 40px; font-weight: 700; font-family: var(--mono); line-height: 1; color: var(--green); }
 
 .chart-wrap { position: relative; height: 200px; }
 
@@ -152,6 +155,7 @@ select option { background: var(--bg3); }
   <span class="header-sub">RSL301 · HX711 · ESP32</span>
   <div class="spacer"></div>
   <span class="pill" id="status-pill"><span class="dot" id="status-dot"></span><span id="status-text">Disconnected</span></span>
+  <span class="pill" id="conn-type-pill" style="display:none;margin-left:6px"></span>
 </div>
 
 <div class="tabs">
@@ -163,14 +167,33 @@ select option { background: var(--bg3); }
 <!-- LIVE TAB -->
 <div class="panel active" id="panel-live">
   <div class="controls">
-    <select id="port-select" style="min-width:180px"><option value="">Loading ports…</option></select>
+    <select id="port-select" style="min-width:160px"><option value="">Loading ports…</option></select>
     <button id="btn-refresh">↻</button>
-    <button id="btn-connect">Connect</button>
+    <button id="btn-connect">Serial</button>
+    <span style="color:var(--text3);font-size:12px;padding:0 4px">or</span>
+    <input type="text" id="wifi-host-input" placeholder="ESP IP / force-plate.local" style="min-width:180px">
+    <button id="btn-connect-wifi">WiFi</button>
+    <button id="btn-disconnect" style="display:none" class="btn-red">Disconnect</button>
+  </div>
+  <div class="controls" style="margin-bottom:4px">
     <button class="btn-green" id="btn-record" disabled>▶ Start Session</button>
-    <button class="btn-red"   id="btn-stop"   disabled>■ Stop &amp; Save CSV</button>
+    <button class="btn-red"   id="btn-stop"   disabled>■ Stop</button>
+    <button class="btn-amber" id="btn-save"   style="display:none">↓ Save CSV</button>
     <button id="btn-tare"  disabled>Tare All</button>
     <button id="btn-clear" disabled>Clear Chart</button>
+    <button id="btn-reset-view">Reset View</button>
     <button id="btn-status" disabled>Refresh Status</button>
+  </div>
+  <div class="controls" style="margin-bottom:4px">
+    <input type="file" id="replay-file-input" accept=".csv" style="display:none">
+    <button id="btn-open-csv">Open CSV…</button>
+    <span id="replay-file-name" style="font-size:11px;color:var(--text3);min-width:80px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:220px"></span>
+    <button id="btn-replay" disabled>▶ Replay</button>
+    <button id="btn-replay-stop" class="btn-red" style="display:none">■ Stop Replay</button>
+  </div>
+  <div class="controls" style="margin-bottom:10px">
+    <input type="text" id="cmd-input" placeholder="Command (h for help)" style="flex:1;min-width:180px" disabled>
+    <button id="btn-cmd-send" disabled>Send</button>
   </div>
 
   <div class="metrics">
@@ -191,44 +214,57 @@ select option { background: var(--bg3); }
     </div>
   </div>
 
-  <!-- Stabilogram + Tier 1 metrics -->
+  <!-- Stabilogram -->
   <div class="card">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
       <span class="card-title">Stabilogram</span>
-      <span style="font-size:11px;color:var(--text3)">Trail: 5 s · 10 Hz LPF</span>
+      <span style="font-size:11px;color:var(--text3)">Trail: 5 s · 40 Hz</span>
     </div>
-    <div style="display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap">
-      <canvas id="stabCanvas" width="340" height="340"></canvas>
-      <div class="stab-metrics-panel">
-        <div class="stat-row"><span class="stat-label">COP X (ML)</span><span class="stat-val" id="m-cop-x">–</span><span class="stat-unit">mm</span></div>
-        <div class="stat-row"><span class="stat-label">COP Y (AP)</span><span class="stat-val" id="m-cop-y">–</span><span class="stat-unit">mm</span></div>
-        <hr class="divider-h">
-        <div class="stat-row"><span class="stat-label">Velocity total</span><span class="stat-val" id="m-vel-total">–</span><span class="stat-unit">mm/s</span></div>
-        <div class="stat-row"><span class="stat-label">Velocity AP</span><span class="stat-val" id="m-vel-ap">–</span><span class="stat-unit">mm/s</span></div>
-        <div class="stat-row"><span class="stat-label">Velocity ML</span><span class="stat-val" id="m-vel-ml">–</span><span class="stat-unit">mm/s</span></div>
-        <hr class="divider-h">
-        <div class="stat-row"><span class="stat-label">Sway RMS AP</span><span class="stat-val" id="m-rms-ap">–</span><span class="stat-unit">mm</span></div>
-        <div class="stat-row"><span class="stat-label">Sway RMS ML</span><span class="stat-val" id="m-rms-ml">–</span><span class="stat-unit">mm</span></div>
-        <div class="stat-row"><span class="stat-label">Ellipse area</span><span class="stat-val" id="m-ellipse">–</span><span class="stat-unit">mm²</span></div>
-        <div class="stat-row"><span class="stat-label">Mean COP X</span><span class="stat-val" id="m-mean-x">–</span><span class="stat-unit">mm</span></div>
-        <div class="stat-row"><span class="stat-label">Mean COP Y</span><span class="stat-val" id="m-mean-y">–</span><span class="stat-unit">mm</span></div>
+    <div class="stab-row">
+      <canvas id="stabCanvas" width="1060" height="1060"></canvas>
+      <div class="stab-big-metrics">
+        <div class="sbm">
+          <div class="sbm-label">Balance Score</div>
+          <div class="sbm-score" id="sbm-balance-score">–</div>
+          <div class="sbm-unit">/100</div>
+        </div>
+        <div class="sbm">
+          <div class="sbm-label">Sway Velocity</div>
+          <div class="sbm-val" id="sbm-vel-total">–</div>
+          <div class="sbm-unit">mm/s</div>
+        </div>
+        <div class="sbm">
+          <div class="sbm-label">Sway Length</div>
+          <div class="sbm-val" id="sbm-path-length">–</div>
+          <div class="sbm-unit">mm</div>
+        </div>
+        <div class="sbm">
+          <div class="sbm-label">Sway RMS</div>
+          <div class="sbm-val" id="sbm-sway-rms">–</div>
+          <div class="sbm-unit">mm</div>
+        </div>
+        <div class="sbm">
+          <div class="sbm-label">Sway Area</div>
+          <div class="sbm-val" id="sbm-ellipse">–</div>
+          <div class="sbm-unit">mm²</div>
+        </div>
+        <div class="sbm">
+          <div class="sbm-label">Max Dist</div>
+          <div class="sbm-val" id="sbm-maxdist">–</div>
+          <div class="sbm-unit">mm</div>
+          <div class="sbm-sub">
+            <span>AP <span id="sbm-range-ap">–</span></span>
+            <span>ML <span id="sbm-range-ml">–</span></span>
+          </div>
+        </div>
       </div>
     </div>
-  </div>
-
-  <!-- Tier 2 metrics -->
-  <div class="metrics" style="grid-template-columns:repeat(5,minmax(0,1fr));margin-bottom:10px">
-    <div class="metric"><div class="m-label">Path Length</div><div class="m-val" id="m-path">–</div><div class="m-unit">mm</div></div>
-    <div class="metric"><div class="m-label">Range AP</div><div class="m-val" id="m-range-ap">–</div><div class="m-unit">mm</div></div>
-    <div class="metric"><div class="m-label">Range ML</div><div class="m-val" id="m-range-ml">–</div><div class="m-unit">mm</div></div>
-    <div class="metric"><div class="m-label">MDIST</div><div class="m-val" id="m-mdist">–</div><div class="m-unit">mm</div></div>
-    <div class="metric"><div class="m-label">MAXDIST</div><div class="m-val" id="m-maxdist">–</div><div class="m-unit">mm</div></div>
   </div>
 
   <div class="card">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
       <span class="card-title">Force over time</span>
-      <span style="font-size:11px;color:var(--text3)">last 300 samples</span>
+      <span style="font-size:11px;color:var(--text3)">last 600 samples</span>
     </div>
     <div class="chart-wrap"><canvas id="forceChart"></canvas></div>
   </div>
@@ -304,16 +340,26 @@ select option { background: var(--bg3); }
 // ---------------------------------------------------------------------------
 // Elements
 // ---------------------------------------------------------------------------
-const portSelect   = document.getElementById('port-select');
-const btnRefresh   = document.getElementById('btn-refresh');
-const btnConnect   = document.getElementById('btn-connect');
-const btnRecord    = document.getElementById('btn-record');
-const btnStop      = document.getElementById('btn-stop');
-const btnTare      = document.getElementById('btn-tare');
-const btnClear     = document.getElementById('btn-clear');
-const btnStatus    = document.getElementById('btn-status');
-const statusDot    = document.getElementById('status-dot');
-const statusText   = document.getElementById('status-text');
+const portSelect      = document.getElementById('port-select');
+const btnRefresh      = document.getElementById('btn-refresh');
+const btnConnect      = document.getElementById('btn-connect');
+const btnConnectWifi  = document.getElementById('btn-connect-wifi');
+const btnDisconnect   = document.getElementById('btn-disconnect');
+const wifiHostInput   = document.getElementById('wifi-host-input');
+const btnRecord       = document.getElementById('btn-record');
+const btnStop         = document.getElementById('btn-stop');
+const btnSave         = document.getElementById('btn-save');
+const replayFileInput = document.getElementById('replay-file-input');
+const btnOpenCsv      = document.getElementById('btn-open-csv');
+const replayFileName  = document.getElementById('replay-file-name');
+const btnReplay       = document.getElementById('btn-replay');
+const btnReplayStop   = document.getElementById('btn-replay-stop');
+const btnTare         = document.getElementById('btn-tare');
+const btnClear        = document.getElementById('btn-clear');
+const btnStatus       = document.getElementById('btn-status');
+const statusDot       = document.getElementById('status-dot');
+const statusText      = document.getElementById('status-text');
+const connTypePill    = document.getElementById('conn-type-pill');
 const vTotal       = document.getElementById('v-total');
 const statHz       = document.getElementById('stat-hz');
 const ssN          = document.getElementById('ss-n');
@@ -333,10 +379,20 @@ const stabCtx      = stabCanvas ? stabCanvas.getContext('2d') : null;
 let connected     = false;
 let postingMode   = false;
 let sessionActive = false;
+let lastSessionId = null;   // id of most recently stopped session, for Save CSV
 let timerHandle   = null;
 let timerStart    = 0;
+let replayActive  = false;
+let replayHandles = [];
+let replayFrames  = [];
+let replayCsvText = null;   // raw CSV text of the loaded file, sent to server for metric computation
+
+// When true, the stabilogram trail and metrics panel are frozen (session ended).
+// Cleared by Reset View or when a new session starts.
+let metricsViewFrozen = false;
 
 let lastFrameTime = 0;
+let lastEspTimestamp = 0;
 let frameCount    = 0;
 let hzAccum       = 0;
 let hzSamples     = 0;
@@ -347,11 +403,12 @@ let sessionTotalAcc = 0;
 
 const TRAIL_SECONDS = 5;
 let trailBuffer  = [];
+let lastCornerForces = [null, null, null, null]; // FL FR BL BR (grams, clamped)
 let lastMetrics  = null;
 let plateWidthMm  = 339.411;
 let plateHeightMm = 339.411;
 
-const CHART_MAX = 300;
+const CHART_MAX = 600;
 const chartLabels = [];
 const chartDatasets = [
   { label: 'FL', borderColor: '#60a5fa', data: [], pointRadius: 0, borderWidth: 1.5, tension: 0.2 },
@@ -383,6 +440,87 @@ if (chartCanvas && window.Chart) {
 }
 
 // ---------------------------------------------------------------------------
+// Render loop — decoupled from WebSocket delivery via requestAnimationFrame
+// ---------------------------------------------------------------------------
+let pendingRender = false;
+function scheduleRender() {
+  if (!pendingRender) {
+    pendingRender = true;
+    requestAnimationFrame(renderFrame);
+  }
+}
+
+// Offscreen canvas for the static stabilogram background (grid, circles, plate).
+// Rebuilt only when plate geometry changes to avoid per-frame cost.
+let stabBgCanvas = null;
+let stabBgWidth = 0, stabBgHeight = 0, stabBgPlateW = 0, stabBgPlateH = 0;
+
+function getStabBg(W, H) {
+  if (stabBgCanvas && stabBgWidth === W && stabBgHeight === H &&
+      stabBgPlateW === plateWidthMm && stabBgPlateH === plateHeightMm) {
+    return stabBgCanvas;
+  }
+  stabBgCanvas   = document.createElement('canvas');
+  stabBgCanvas.width  = W;
+  stabBgCanvas.height = H;
+  stabBgWidth  = W; stabBgHeight  = H;
+  stabBgPlateW = plateWidthMm; stabBgPlateH = plateHeightMm;
+
+  const ctx = stabBgCanvas.getContext('2d');
+  const PAD = 38;
+  const scaleX = (W / 2 - PAD) / (plateWidthMm  / 2);
+  const scaleY = (H / 2 - PAD) / (plateHeightMm / 2);
+  const scaleR = Math.min(scaleX, scaleY);
+
+  // Concentric reference circles
+  const circlesMm    = [50, 100, 150, 170];
+  const circleAlphas = [0.09, 0.12, 0.16, 0.22];
+  ctx.font = '10px IBM Plex Mono, monospace';
+  circlesMm.forEach((mmVal, idx) => {
+    const r = mmVal * scaleR;
+    ctx.beginPath();
+    ctx.arc(W / 2, H / 2, r, 0, Math.PI * 2);
+    ctx.strokeStyle = `rgba(255,255,255,${circleAlphas[idx]})`;
+    ctx.lineWidth = idx === circlesMm.length - 1 ? 1.5 : 1;
+    ctx.setLineDash(idx === circlesMm.length - 1 ? [] : [3, 5]);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = `rgba(255,255,255,${circleAlphas[idx] + 0.12})`;
+    ctx.fillText(`${mmVal}`, W / 2 + r + 4, H / 2 + 4);
+  });
+
+  // Plate border
+  const tl = { cx: W / 2 + (-plateWidthMm / 2) * scaleX, cy: H / 2 - (plateHeightMm / 2) * scaleY };
+  const br = { cx: W / 2 + ( plateWidthMm / 2) * scaleX, cy: H / 2 - (-plateHeightMm / 2) * scaleY };
+  ctx.strokeStyle = 'rgba(255,255,255,0.25)';
+  ctx.lineWidth = 1.5;
+  ctx.strokeRect(tl.cx, tl.cy, br.cx - tl.cx, br.cy - tl.cy);
+
+  // Crosshairs
+  ctx.strokeStyle = 'rgba(255,255,255,0.14)';
+  ctx.lineWidth = 1;
+  ctx.setLineDash([4, 5]);
+  ctx.beginPath(); ctx.moveTo(W / 2, tl.cy); ctx.lineTo(W / 2, br.cy); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(tl.cx, H / 2); ctx.lineTo(br.cx, H / 2); ctx.stroke();
+  ctx.setLineDash([]);
+
+  return stabBgCanvas;
+}
+
+let lastChartRenderTime = 0;
+function renderFrame() {
+  pendingRender = false;
+  drawStabilogram();
+  if (forceChart) {
+    const now = performance.now();
+    if (now - lastChartRenderTime >= 100) {
+      forceChart.update('none');
+      lastChartRenderTime = now;
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
 // WebSocket
 // ---------------------------------------------------------------------------
 const ws = new WebSocket('ws://localhost:8080');
@@ -390,9 +528,9 @@ const ws = new WebSocket('ws://localhost:8080');
 ws.onmessage = (ev) => {
   let msg;
   try { msg = JSON.parse(ev.data); } catch { return; }
-  if (msg.type === 'status')  handleStatus(msg.data);
-  else if (msg.type === 'frame') handleFrame(msg.data);
-  else if (msg.type === 'raw')   handleRawLine(msg.line);
+  if (msg.type === 'status')       handleStatus(msg.data);
+  else if (msg.type === 'frame')   { if (!replayActive) updateFrameState(msg.data); }
+  else if (msg.type === 'raw')     handleRawLine(msg.line);
 };
 
 ws.onerror = () => appendLog('WebSocket error — is the server running?', 'err');
@@ -409,25 +547,41 @@ function handleStatus(s) {
   switch (s.status) {
     case 'connected':
       connected = true;
-      setStatusPill(true, `Connected · ${s.port ?? ''}`);
-      appendLog(`Connected on ${s.port}`, 'ok');
+      if (s.connType === 'wifi') {
+        setStatusPill(true, `Connected · ${s.host ?? ''}`);
+        setConnTypePill('wifi');
+        appendLog(`Connected via WiFi to ${s.host}`, 'ok');
+      } else {
+        setStatusPill(true, `Connected · ${s.port ?? ''}`);
+        setConnTypePill('serial');
+        appendLog(`Connected via Serial on ${s.port}`, 'ok');
+      }
       enableConnectedButtons(true);
       break;
     case 'disconnected':
       connected = postingMode = sessionActive = false;
       stopTimer();
       setStatusPill(false, 'Not connected');
+      setConnTypePill(null);
       appendLog(`Disconnected${s.reason ? ': ' + s.reason : ''}`, s.reason ? 'err' : '');
       enableConnectedButtons(false);
       clearStabilogram();
       break;
+    case 'wifi_connected':
+      appendLog(`ESP WiFi: ${s.ip ?? ''} (${s.mdns ?? ''})`, 'ok');
+      break;
+    case 'wifi_client_connected':
+      appendLog('ESP WiFi TCP client connected', 'ok');
+      break;
     case 'posting_mode':
       postingMode = true;
+      trailBuffer = [];  // clear stale trail from any previous connection
       appendLog('Posting mode active', 'ok');
       updateSessionButtons();
       break;
     case 'recording':
       sessionActive = true;
+      metricsViewFrozen = false;  // unfreeze — new session starting
       sessionSamples = 0; sessionPeak = 0; sessionTotalAcc = 0;
       startTimer();
       updateSessionButtons();
@@ -435,9 +589,9 @@ function handleStatus(s) {
       break;
     case 'idle':
       sessionActive = false;
+      metricsViewFrozen = true;  // freeze — session ended, hold last metrics
       stopTimer();
       updateSessionButtons();
-      clearStabilogram();
       break;
     case 'cal_mode':
       postingMode = false;
@@ -446,60 +600,77 @@ function handleStatus(s) {
   }
 
   if (s.cells) updateCalPanel(s);
+
+  // Firmware sends postingMode in [STATUS] JSON — sync dashboard state.
+  if (typeof s.postingMode === 'boolean') {
+    if (s.postingMode && !postingMode) {
+      postingMode = true;
+      trailBuffer = [];
+      appendLog('Posting mode active', 'ok');
+      updateSessionButtons();
+    } else if (!s.postingMode && postingMode) {
+      postingMode = false;
+      updateSessionButtons();
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------
-// Frame handler
+// Frame state update (called from WebSocket — no rendering)
 // ---------------------------------------------------------------------------
-function handleFrame(frame) {
+function updateFrameState(frame) {
   if (!frame) return;
 
-  const forces = [frame.f0, frame.f1, frame.f2, frame.f3];
+  // Clamp per-corner forces to ≥ 0 (force plate can't pull the ground)
+  const forces = [frame.f0, frame.f1, frame.f2, frame.f3].map(v => v != null ? Math.max(0, v) : null);
+  lastCornerForces = forces;
   forces.forEach((v, i) => {
     if (cornerVals[i]) cornerVals[i].textContent = v != null ? Math.round(v) : '–';
   });
 
-  const fz = frame.fz;
+  const fz = frame.fz != null ? Math.max(0, frame.fz) : null;
   if (vTotal) vTotal.textContent = fz != null ? Math.round(fz) : '–';
 
-  const cx = frame.copXFiltered;
-  const cy = frame.copYFiltered;
-  setText('m-cop-x', cx != null ? cx.toFixed(1) : '–');
-  setText('m-cop-y', cy != null ? cy.toFixed(1) : '–');
+  // Clamp COP inside plate boundaries
+  const halfW = plateWidthMm  / 2;
+  const halfH = plateHeightMm / 2;
+  const cx = frame.copXFiltered != null ? Math.max(-halfW, Math.min(halfW, frame.copXFiltered)) : null;
+  const cy = frame.copYFiltered != null ? Math.max(-halfH, Math.min(halfH, frame.copYFiltered)) : null;
 
-  if (cx != null && cy != null && frame.timestamp != null) {
-    trailBuffer.push({ x: cx, y: cy, t: frame.timestamp });
-    const cutoff = frame.timestamp - TRAIL_SECONDS * 1000;
-    let i = 0;
-    while (i < trailBuffer.length && trailBuffer[i].t < cutoff) i++;
-    if (i > 0) trailBuffer.splice(0, i);
+  if (!metricsViewFrozen) {
+    if (cx != null && cy != null && frame.timestamp != null) {
+      // Negate X to flip left/right — board is mounted upside-down
+      trailBuffer.push({ x: -cx, y: cy, t: frame.timestamp });
+      const cutoff = frame.timestamp - TRAIL_SECONDS * 1000;
+      let i = 0;
+      while (i < trailBuffer.length && trailBuffer[i].t < cutoff) i++;
+      if (i > 0) trailBuffer.splice(0, i);
+    }
+
+    if (frame.metrics) {
+      lastMetrics = frame.metrics;
+      updateMetricsDisplay(frame.metrics);
+    }
   }
 
-  if (frame.metrics) {
-    lastMetrics = frame.metrics;
-    updateMetricsDisplay(frame.metrics);
-  }
-
-  drawStabilogram();
-
+  // Accumulate chart data (no render — renderFrame handles that)
   if (forceChart) {
     chartLabels.push('');
-    chartDatasets[0].data.push(frame.f0 ?? 0);
-    chartDatasets[1].data.push(frame.f1 ?? 0);
-    chartDatasets[2].data.push(frame.f2 ?? 0);
-    chartDatasets[3].data.push(frame.f3 ?? 0);
+    chartDatasets[0].data.push(forces[0] ?? 0);
+    chartDatasets[1].data.push(forces[1] ?? 0);
+    chartDatasets[2].data.push(forces[2] ?? 0);
+    chartDatasets[3].data.push(forces[3] ?? 0);
     if (chartLabels.length > CHART_MAX) {
       chartLabels.shift();
       chartDatasets.forEach(d => d.data.shift());
     }
-    forceChart.update('none');
   }
 
-  const now = performance.now();
-  if (lastFrameTime > 0) {
-    const dt = now - lastFrameTime;
-    if (dt > 0) {
-      hzAccum += 1000 / dt;
+  // Use ESP32 timestamps for Hz calculation (immune to network jitter)
+  if (frame.timestamp != null && lastEspTimestamp > 0) {
+    const dtMs = frame.timestamp - lastEspTimestamp;
+    if (dtMs > 0 && dtMs < 200) {  // ignore gaps > 200ms (dropped samples)
+      hzAccum += 1000 / dtMs;
       hzSamples++;
       if (hzSamples >= 20) {
         if (statHz) statHz.textContent = (hzAccum / hzSamples).toFixed(0) + ' Hz';
@@ -507,7 +678,7 @@ function handleFrame(frame) {
       }
     }
   }
-  lastFrameTime = now;
+  lastEspTimestamp = frame.timestamp ?? 0;
 
   if (sessionActive) {
     sessionSamples++;
@@ -519,25 +690,22 @@ function handleFrame(frame) {
     if (ssPeak) ssPeak.textContent = Math.round(sessionPeak);
     if (ssAvg)  ssAvg.textContent  = Math.round(sessionTotalAcc / sessionSamples);
   }
+
+  scheduleRender();
 }
 
 // ---------------------------------------------------------------------------
 // Metrics display
 // ---------------------------------------------------------------------------
 function updateMetricsDisplay(m) {
-  setText('m-vel-total', m.swayVelocity   != null ? m.swayVelocity.toFixed(1)   : '–');
-  setText('m-vel-ap',    m.swayVelocity_AP != null ? m.swayVelocity_AP.toFixed(1) : '–');
-  setText('m-vel-ml',    m.swayVelocity_ML != null ? m.swayVelocity_ML.toFixed(1) : '–');
-  setText('m-rms-ap',    m.swayRMS_AP  != null ? m.swayRMS_AP.toFixed(2)  : '–');
-  setText('m-rms-ml',    m.swayRMS_ML  != null ? m.swayRMS_ML.toFixed(2)  : '–');
-  setText('m-ellipse',   m.stabilityArea != null ? m.stabilityArea.toFixed(0) : '–');
-  setText('m-mean-x',    m.meanCopX != null ? m.meanCopX.toFixed(1) : '–');
-  setText('m-mean-y',    m.meanCopY != null ? m.meanCopY.toFixed(1) : '–');
-  setText('m-path',      m.pathLength != null ? m.pathLength.toFixed(0) : '–');
-  setText('m-range-ap',  m.rangeAP    != null ? m.rangeAP.toFixed(1)    : '–');
-  setText('m-range-ml',  m.rangeML    != null ? m.rangeML.toFixed(1)    : '–');
-  setText('m-mdist',     m.mdist      != null ? m.mdist.toFixed(2)      : '–');
-  setText('m-maxdist',   m.maxdist    != null ? m.maxdist.toFixed(2)    : '–');
+  setText('sbm-balance-score', m.balanceScore  != null ? m.balanceScore.toFixed(0)  : '–');
+  setText('sbm-vel-total',     m.swayVelocity  != null ? m.swayVelocity.toFixed(1)  : '–');
+  setText('sbm-path-length',   m.pathLength    != null ? m.pathLength.toFixed(0)    : '–');
+  setText('sbm-sway-rms',      m.swayRMS       != null ? m.swayRMS.toFixed(2)       : '–');
+  setText('sbm-ellipse',       m.stabilityArea != null ? m.stabilityArea.toFixed(0) : '–');
+  setText('sbm-maxdist',       m.maxdist       != null ? m.maxdist.toFixed(2)       : '–');
+  setText('sbm-range-ap',      m.rangeAP       != null ? m.rangeAP.toFixed(1)       : '–');
+  setText('sbm-range-ml',      m.rangeML       != null ? m.rangeML.toFixed(1)       : '–');
 }
 
 // ---------------------------------------------------------------------------
@@ -549,68 +717,95 @@ function mmToCanvas(xMm, yMm, W, H, scaleX, scaleY) {
 
 function drawStabilogram() {
   if (!stabCtx) return;
-  const W = stabCanvas.width, H = stabCanvas.height, PAD = 28;
+  const W = stabCanvas.width, H = stabCanvas.height, PAD = 38;
   const scaleX = (W / 2 - PAD) / (plateWidthMm  / 2);
   const scaleY = (H / 2 - PAD) / (plateHeightMm / 2);
 
+  // Blit cached static background (circles, plate border, crosshairs)
   stabCtx.clearRect(0, 0, W, H);
+  stabCtx.drawImage(getStabBg(W, H), 0, 0);
 
   const tl = mmToCanvas(-plateWidthMm / 2,  plateHeightMm / 2, W, H, scaleX, scaleY);
   const br = mmToCanvas( plateWidthMm / 2, -plateHeightMm / 2, W, H, scaleX, scaleY);
-  stabCtx.strokeStyle = 'rgba(255,255,255,0.10)';
-  stabCtx.lineWidth = 1;
-  stabCtx.strokeRect(tl.cx, tl.cy, br.cx - tl.cx, br.cy - tl.cy);
 
-  stabCtx.fillStyle = 'rgba(255,255,255,0.18)';
-  stabCtx.font = '10px IBM Plex Mono, monospace';
-  stabCtx.fillText('FL', tl.cx + 6, tl.cy + 13);
-  stabCtx.fillText('FR', br.cx - 22, tl.cy + 13);
-  stabCtx.fillText('BL', tl.cx + 6, br.cy - 5);
-  stabCtx.fillText('BR', br.cx - 22, br.cy - 5);
+  // ── Corner load cell labels + live values ─────────────────────────────────
+  const corners = [
+    { x: br.cx, y: tl.cy, ax: -1, ay: 1,  name: 'FL', color: '#60a5fa' },
+    { x: tl.cx, y: tl.cy, ax: 1,  ay: 1,  name: 'FR', color: '#4ade80' },
+    { x: br.cx, y: br.cy, ax: -1, ay: -1, name: 'BL', color: '#fbbf24' },
+    { x: tl.cx, y: br.cy, ax: 1,  ay: -1, name: 'BR', color: '#f87171' },
+  ];
+  stabCtx.font = 'bold 11px IBM Plex Mono, monospace';
+  corners.forEach((c, i) => {
+    const val = lastCornerForces[i];
+    const label = val != null ? `${c.name} ${Math.round(val)}g` : c.name;
+    stabCtx.fillStyle = c.color;
+    stabCtx.textAlign = c.ax > 0 ? 'left' : 'right';
+    stabCtx.fillText(label, c.x + (c.ax > 0 ? 7 : -7), c.y + (c.ay > 0 ? 16 : -7));
+  });
+  stabCtx.textAlign = 'left';
 
-  stabCtx.strokeStyle = 'rgba(255,255,255,0.12)';
-  stabCtx.lineWidth = 1;
-  stabCtx.setLineDash([4, 5]);
-  stabCtx.beginPath(); stabCtx.moveTo(W / 2, PAD);   stabCtx.lineTo(W / 2, H - PAD); stabCtx.stroke();
-  stabCtx.beginPath(); stabCtx.moveTo(PAD, H / 2);   stabCtx.lineTo(W - PAD, H / 2); stabCtx.stroke();
-  stabCtx.setLineDash([]);
-
+  // ── Stability area (95% confidence ellipse fill) ──────────────────────────
   if (lastMetrics && lastMetrics.ellipseParams) {
     const ep = lastMetrics.ellipseParams;
-    const ex = W / 2 + ep.centerX * scaleX, ey = H / 2 - ep.centerY * scaleY;
+    const ex = W / 2 + (-ep.centerX) * scaleX, ey = H / 2 - ep.centerY * scaleY;
     const aRad = ep.semiAxisA * scaleX, bRad = ep.semiAxisB * scaleY;
-    const ang = -ep.angle * Math.PI / 180;
+    const ang = ep.angle * Math.PI / 180;
+    const isEarlyWindow = lastMetrics.pathLength != null && lastMetrics.pathLength < 30;
     stabCtx.save();
     stabCtx.translate(ex, ey);
     stabCtx.rotate(ang);
     stabCtx.beginPath();
     stabCtx.ellipse(0, 0, Math.max(aRad, 1), Math.max(bRad, 1), 0, 0, Math.PI * 2);
-    stabCtx.strokeStyle = 'rgba(96,165,250,0.45)';
-    stabCtx.lineWidth = 1.5;
-    stabCtx.stroke();
-    stabCtx.fillStyle = 'rgba(96,165,250,0.06)';
+    stabCtx.fillStyle = isEarlyWindow ? 'rgba(251,191,36,0.06)' : 'rgba(251,191,36,0.12)';
     stabCtx.fill();
+    stabCtx.strokeStyle = isEarlyWindow ? 'rgba(251,191,36,0.35)' : 'rgba(251,191,36,0.70)';
+    stabCtx.lineWidth = 1.5;
+    stabCtx.setLineDash(isEarlyWindow ? [4, 4] : []);
+    stabCtx.stroke();
+    stabCtx.setLineDash([]);
     stabCtx.restore();
   }
 
+  // ── COP path — single polyline with opacity gradient via segment batching ──
+  // Segments are grouped into 8 opacity bands to minimize state changes.
   const N = trailBuffer.length;
-  for (let i = 0; i < N - 1; i++) {
-    const alpha = 0.06 + 0.52 * (i / Math.max(N - 1, 1));
-    const p = mmToCanvas(trailBuffer[i].x, trailBuffer[i].y, W, H, scaleX, scaleY);
-    stabCtx.beginPath();
-    stabCtx.arc(p.cx, p.cy, 1.5, 0, Math.PI * 2);
-    stabCtx.fillStyle = `rgba(148,163,184,${alpha.toFixed(2)})`;
-    stabCtx.fill();
+  if (N > 1) {
+    const BANDS = 8;
+    const bandSize = Math.ceil((N - 1) / BANDS);
+    for (let b = 0; b < BANDS; b++) {
+      const segStart = b * bandSize;
+      const segEnd   = Math.min(segStart + bandSize, N - 1);
+      if (segStart >= segEnd) break;
+      const t = (segStart + segEnd) / 2 / Math.max(N - 2, 1);
+      const alpha = 0.12 + 0.60 * t;
+      const width = 0.8 + 1.4 * t;
+      stabCtx.beginPath();
+      const p0 = mmToCanvas(trailBuffer[segStart].x, trailBuffer[segStart].y, W, H, scaleX, scaleY);
+      stabCtx.moveTo(p0.cx, p0.cy);
+      for (let i = segStart + 1; i <= segEnd; i++) {
+        const p = mmToCanvas(trailBuffer[i].x, trailBuffer[i].y, W, H, scaleX, scaleY);
+        stabCtx.lineTo(p.cx, p.cy);
+      }
+      stabCtx.strokeStyle = `rgba(148,163,184,${alpha.toFixed(2)})`;
+      stabCtx.lineWidth = width;
+      stabCtx.stroke();
+    }
   }
 
+  // ── Current COP dot ────────────────────────────────────────────────────────
   if (N > 0) {
     const last = trailBuffer[N - 1];
     const lp = mmToCanvas(last.x, last.y, W, H, scaleX, scaleY);
     stabCtx.beginPath();
+    stabCtx.arc(lp.cx, lp.cy, 9, 0, Math.PI * 2);
+    stabCtx.fillStyle = 'rgba(74,222,128,0.15)';
+    stabCtx.fill();
+    stabCtx.beginPath();
     stabCtx.arc(lp.cx, lp.cy, 5, 0, Math.PI * 2);
     stabCtx.fillStyle = '#4ade80';
     stabCtx.shadowColor = '#4ade80';
-    stabCtx.shadowBlur = 10;
+    stabCtx.shadowBlur = 12;
     stabCtx.fill();
     stabCtx.shadowBlur = 0;
   }
@@ -618,10 +813,12 @@ function drawStabilogram() {
 
 function clearStabilogram() {
   trailBuffer = []; lastMetrics = null;
+  stabBgCanvas = null;  // invalidate cached background
   if (stabCtx) stabCtx.clearRect(0, 0, stabCanvas.width, stabCanvas.height);
-  ['m-cop-x','m-cop-y','m-vel-total','m-vel-ap','m-vel-ml',
-   'm-rms-ap','m-rms-ml','m-ellipse','m-mean-x','m-mean-y',
-   'm-path','m-range-ap','m-range-ml','m-mdist','m-maxdist'].forEach(id => setText(id, '–'));
+  lastCornerForces = [null, null, null, null];
+  ['sbm-balance-score','sbm-vel-total','sbm-path-length','sbm-sway-rms',
+   'sbm-ellipse','sbm-maxdist','sbm-range-ap','sbm-range-ml',
+  ].forEach(id => setText(id, '–'));
 }
 
 // ---------------------------------------------------------------------------
@@ -680,14 +877,103 @@ function setStatusPill(on, text) {
   if (statusText) statusText.textContent = text;
 }
 
+function setConnTypePill(type) {
+  if (!connTypePill) return;
+  if (!type) { connTypePill.style.display = 'none'; return; }
+  connTypePill.style.display = 'inline-flex';
+  if (type === 'wifi') {
+    connTypePill.textContent = '⦿ WiFi';
+    connTypePill.style.color = 'var(--blue)';
+    connTypePill.style.borderColor = 'rgba(96,165,250,.3)';
+    connTypePill.style.background = 'var(--blue-bg)';
+  } else {
+    connTypePill.textContent = '⎍ Serial';
+    connTypePill.style.color = 'var(--amber)';
+    connTypePill.style.borderColor = 'rgba(251,191,36,.3)';
+    connTypePill.style.background = 'var(--amber-bg)';
+  }
+}
+
 function enableConnectedButtons(on) {
   [btnTare, btnStatus].forEach(b => { if (b) b.disabled = !on; });
+  const ci = document.getElementById('cmd-input');
+  const cs = document.getElementById('btn-cmd-send');
+  if (ci) ci.disabled = !on;
+  if (cs) cs.disabled = !on;
+  // Show/hide connect vs disconnect buttons
+  if (btnConnect)      { btnConnect.style.display      = on ? 'none' : ''; btnConnect.disabled = false; }
+  if (btnConnectWifi)  { btnConnectWifi.style.display  = on ? 'none' : ''; btnConnectWifi.disabled = false; }
+  if (wifiHostInput)   wifiHostInput.style.display   = on ? 'none' : '';
+  if (btnRefresh)      btnRefresh.style.display      = on ? 'none' : '';
+  if (btnDisconnect)   btnDisconnect.style.display   = on ? '' : 'none';
+  // Keep port-select hidden while connected
+  if (portSelect)      portSelect.style.display      = on ? 'none' : '';
   updateSessionButtons();
 }
 
 function updateSessionButtons() {
-  if (btnRecord) btnRecord.disabled = !(connected && !sessionActive);
-  if (btnStop)   btnStop.disabled   = !sessionActive;
+  if (btnRecord)     btnRecord.disabled     = !(connected && !sessionActive) || replayActive;
+  if (btnStop)       btnStop.disabled       = !sessionActive;
+  if (btnReplay)     btnReplay.disabled     = !replayFrames.length || sessionActive || replayActive;
+  if (btnReplayStop) btnReplayStop.style.display = replayActive ? '' : 'none';
+  if (btnReplay)     btnReplay.style.display     = replayActive ? 'none' : '';
+}
+
+function parseCsvToFrames(csvText) {
+  return csvText.trim().split('\n').slice(1).map((line) => {
+    const cols = line.split(',');
+    const elapsed_s = parseFloat(cols[1]);  // actual wall-clock time from recording
+    const fl = parseFloat(cols[2]), fr = parseFloat(cols[3]);
+    const bl = parseFloat(cols[4]), br = parseFloat(cols[5]);
+    const copX = parseFloat(cols[7]), copY = parseFloat(cols[8]);
+    return {
+      timestamp: elapsed_s * 1000,  // ms, preserves real inter-sample intervals
+      f0: fl, f1: fr, f2: bl, f3: br,
+      fz: fl + fr + bl + br,
+      copX, copY,
+      copXFiltered: copX, copYFiltered: copY,
+      metrics: null,
+      sessionState: 'active',
+    };
+  }).filter(f => !isNaN(f.copX) && !isNaN(f.copY) && !isNaN(f.timestamp));
+}
+
+function startReplay() {
+  if (!replayFrames.length) return;
+  clearStabilogram();
+  metricsViewFrozen = false;  // ensure metrics update during replay
+  appendLog(`Replaying ${replayFrames.length} samples…`, 'ok');
+  replayActive = true;
+  updateSessionButtons();
+  // Chain frames one at a time: each frame schedules the next after its actual
+  // inter-sample interval. This prevents JS thread delays from causing bursts
+  // (all-upfront setTimeout delays fire immediately if the thread was busy).
+  let idx = 0;
+  function scheduleNext() {
+    if (!replayActive || idx >= replayFrames.length) {
+      if (replayActive) stopReplay();
+      return;
+    }
+    const frame = replayFrames[idx];
+    updateFrameState(frame);
+    idx++;
+    if (idx < replayFrames.length) {
+      const dt = replayFrames[idx].timestamp - frame.timestamp;
+      const handle = setTimeout(scheduleNext, Math.max(0, dt));
+      replayHandles.push(handle);
+    } else {
+      stopReplay();
+    }
+  }
+  scheduleNext();
+}
+
+function stopReplay() {
+  replayHandles.forEach(h => clearTimeout(h));
+  replayHandles = [];
+  replayActive = false;
+  updateSessionButtons();
+  appendLog('Replay stopped', '');
 }
 
 function startTimer() {
@@ -769,8 +1055,36 @@ if (btnConnect) btnConnect.onclick = async () => {
   }
 };
 
+if (btnConnectWifi) btnConnectWifi.onclick = async () => {
+  const host = wifiHostInput ? wifiHostInput.value.trim() : '';
+  if (!host) { appendLog('Enter ESP IP or hostname first', 'warn'); return; }
+  btnConnectWifi.disabled = true;
+  appendLog(`Connecting via WiFi to ${host}…`, '');
+  try {
+    const res = await fetch('/api/connect-wifi', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ host }),
+    });
+    if (!res.ok) {
+      const err = await res.json();
+      appendLog(`WiFi connect failed: ${err.error}`, 'err');
+      btnConnectWifi.disabled = false;
+    }
+  } catch {
+    appendLog('WiFi connect failed', 'err');
+    btnConnectWifi.disabled = false;
+  }
+};
+
+if (btnDisconnect) btnDisconnect.onclick = async () => {
+  await fetch('/api/disconnect', { method: 'POST' });
+};
+
 if (btnRecord) btnRecord.onclick = async () => {
   btnRecord.disabled = true;
+  lastSessionId = null;
+  if (btnSave) btnSave.style.display = 'none';
   await fetch('/api/session/start', { method: 'POST' });
 };
 
@@ -780,12 +1094,21 @@ if (btnStop) btnStop.onclick = async () => {
     const res = await fetch('/api/session/stop', { method: 'POST' });
     if (res.ok) {
       const { sessionId, samples } = await res.json();
-      appendLog(`Session saved: ${sessionId} (${samples} samples)`, 'ok');
-      appendLog(`Download CSV: /api/sessions/${sessionId}/csv`, 'ok');
+      lastSessionId = sessionId;
+      appendLog(`Session stopped (${samples} samples) — click Save CSV to download`, 'ok');
+      if (btnSave) btnSave.style.display = '';
     }
   } catch {
     appendLog('Stop session failed', 'err');
   }
+};
+
+if (btnSave) btnSave.onclick = () => {
+  if (!lastSessionId) return;
+  const a = document.createElement('a');
+  a.href = `/api/sessions/${lastSessionId}/csv`;
+  a.download = `${lastSessionId}.csv`;
+  a.click();
 };
 
 if (btnTare) btnTare.onclick = async () => {
@@ -797,12 +1120,59 @@ if (btnStatus) btnStatus.onclick = async () => {
   await fetch('/api/cmd', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ cmd: 's' }) });
 };
 
+const cmdInput   = document.getElementById('cmd-input');
+const btnCmdSend = document.getElementById('btn-cmd-send');
+
+async function sendCmd() {
+  const val = cmdInput ? cmdInput.value.trim() : '';
+  if (!val || !connected) return;
+  await fetch('/api/cmd', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ cmd: val }) });
+  appendLog(`> ${val}`, '');
+  if (cmdInput) cmdInput.value = '';
+}
+
+if (btnCmdSend) btnCmdSend.onclick = sendCmd;
+if (cmdInput)   cmdInput.onkeydown = (e) => { if (e.key === 'Enter') sendCmd(); };
+
 if (btnClear) btnClear.onclick = () => {
   if (forceChart) {
     chartLabels.length = 0;
     chartDatasets.forEach(d => { d.data.length = 0; });
     forceChart.update('none');
   }
+};
+
+const btnResetView = document.getElementById('btn-reset-view');
+if (btnResetView) btnResetView.onclick = () => {
+  // Clear chart
+  if (forceChart) {
+    chartLabels.length = 0;
+    chartDatasets.forEach(d => { d.data.length = 0; });
+    forceChart.update('none');
+  }
+  // Clear stabilogram trail, metrics, and corner force display
+  clearStabilogram();
+  trailBuffer = [];
+  lastMetrics = null;
+  // Reset session accumulators and display
+  sessionSamples = 0; sessionPeak = 0; sessionTotalAcc = 0;
+  lastFrameTime = 0; hzAccum = 0; hzSamples = 0;
+  if (ssN)    ssN.textContent    = '0';
+  if (ssPeak) ssPeak.textContent = '–';
+  if (ssAvg)  ssAvg.textContent  = '–';
+  if (ssDur)  ssDur.textContent  = '–';
+  if (statHz) statHz.textContent = '–';
+  if (vTotal) vTotal.textContent = '–';
+  cornerVals.forEach(el => { if (el) el.textContent = '–'; });
+  // Reset live COP display
+  // Reset all computed metrics
+  updateMetricsDisplay({});
+  // Reset pipeline on the server so old metrics don't re-appear on the next frame,
+  // then unfreeze to allow fresh updates.
+  fetch('/api/pipeline/reset', { method: 'POST' }).finally(() => {
+    metricsViewFrozen = false;
+  });
+  appendLog('View reset', '');
 };
 
 const btnCalAll   = document.getElementById('btn-cal-all');
@@ -830,6 +1200,49 @@ function switchTab(name) {
     if (t.getAttribute('onclick') === `switchTab('${name}')`) t.classList.add('active');
   });
 }
+
+if (btnReplay) btnReplay.onclick = () => startReplay();
+if (btnReplayStop) btnReplayStop.onclick = () => stopReplay();
+if (btnOpenCsv) btnOpenCsv.onclick = () => replayFileInput?.click();
+if (replayFileInput) replayFileInput.onchange = (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  if (replayFileName) replayFileName.textContent = file.name;
+  const reader = new FileReader();
+  reader.onload = async (ev) => {
+    const csvText = ev.target.result;
+    replayCsvText = csvText;
+    // Pre-compute metrics server-side for richer replay
+    appendLog(`Computing metrics for ${file.name}…`, '');
+    try {
+      const res = await fetch('/api/replay/compute', {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/csv' },
+        body: csvText,
+      });
+      if (res.ok) {
+        replayFrames = await res.json();
+        // Restore real elapsed timestamps from the CSV (server uses synthetic t)
+        const csvLines = csvText.trim().split('\n').slice(1);
+        replayFrames.forEach((f, i) => {
+          const cols = csvLines[i] ? csvLines[i].split(',') : [];
+          const elapsed = parseFloat(cols[1]);
+          if (!isNaN(elapsed)) f.timestamp = elapsed * 1000;
+        });
+        appendLog(`Loaded ${replayFrames.length} samples with computed metrics`, 'ok');
+      } else {
+        // Fallback to client-side parsing without metrics
+        replayFrames = parseCsvToFrames(csvText);
+        appendLog(`Loaded ${replayFrames.length} samples (metrics unavailable)`, '');
+      }
+    } catch {
+      replayFrames = parseCsvToFrames(csvText);
+      appendLog(`Loaded ${replayFrames.length} samples (metrics unavailable)`, '');
+    }
+    updateSessionButtons();
+  };
+  reader.readAsText(file);
+};
 
 // ---------------------------------------------------------------------------
 // Init

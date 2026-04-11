@@ -3,7 +3,8 @@ import path from 'path';
 import fs from 'fs';
 import { WebSocketServer, WebSocket } from 'ws';
 import { SerialConnection, RawForceData } from './serial.js';
-import { Pipeline } from '@force-plate/processing';
+import { WifiConnection } from './wifi-connection.js';
+import { Pipeline, DEFAULT_CONFIG } from '@force-plate/processing';
 
 const HTTP_PORT  = 3000;
 const WS_PORT    = 8080;
@@ -13,9 +14,10 @@ if (!fs.existsSync(SESSIONS_DIR)) fs.mkdirSync(SESSIONS_DIR, { recursive: true }
 
 const app = express();
 app.use(express.json());
+app.use(express.text({ type: 'text/csv', limit: '50mb' }));
 app.use(express.static(path.join(process.cwd(), 'public')));
 
-const pipeline = new Pipeline({ sampleRate: 40, lpfCutoff: 10.0 });
+const pipeline = new Pipeline({ sampleRate: 40, lpfCutoff: 5, metricsInterval: 8, metricsWindowSize: 400 });
 
 // ---------------------------------------------------------------------------
 // WebSocket broadcaster
@@ -60,6 +62,19 @@ let csvRows: CsvRow[] = [];
 let sessionId: string | null = null;
 
 let activeSerial: SerialConnection | null = null;
+let activeWifi:   WifiConnection   | null = null;
+
+type ConnType = 'serial' | 'wifi' | null;
+let connType: ConnType = null;
+
+function activeConnection(): SerialConnection | WifiConnection | null {
+  return activeSerial ?? activeWifi;
+}
+
+function sendToDevice(cmd: string): void {
+  activeSerial?.write(cmd);
+  activeWifi?.write(cmd);
+}
 
 // ---------------------------------------------------------------------------
 // Session helpers
@@ -96,14 +111,18 @@ function stopSession(): { sessionId: string; samples: number } | null {
 }
 
 // ---------------------------------------------------------------------------
-// Serial helpers
+// Shared connection handler wiring
 // ---------------------------------------------------------------------------
-function openSerial(port: string, baudRate: number): Promise<void> {
-  if (activeSerial) { activeSerial.close(); activeSerial = null; }
+/** Track whether we've received data (posting active) after a connect. */
+let receivedFirstData = false;
 
-  const conn = new SerialConnection({ path: port, baudRate });
-
+function wireHandlers(
+  conn: SerialConnection | WifiConnection,
+  label: string,
+  onDisconnect: () => void,
+): void {
   conn.setDataHandler((data: RawForceData) => {
+    receivedFirstData = true;
     const frame = pipeline.processSample({
       t: data.t, f0: data.fl, f1: data.fr, f2: data.bl, f3: data.br,
     });
@@ -131,18 +150,98 @@ function openSerial(port: string, baudRate: number): Promise<void> {
         plateHeightMm: status.plate_height_mm,
       });
     }
+    // Auto-start posting when firmware reports calibrated cells but posting is off.
+    // This covers WiFi reconnect and the initial 'd' rescan after connect.
+    if (Array.isArray(status.cells) && status.postingMode === false) {
+      const cells = status.cells as Array<Record<string, unknown>>;
+      const allCalibrated = cells.length > 0 && cells.every(
+        c => !c.connected || c.calibrated
+      );
+      const anyConnected = cells.some(c => c.connected);
+      if (anyConnected && allCalibrated) {
+        console.log(`[${label}] Auto-sending 'start' — cells calibrated, posting was off`);
+        conn.write('start\n');
+      }
+    }
   });
 
-  conn.setRawLineHandler((line: string) => ws.broadcastRawLine(line));
+  conn.setRawLineHandler((line: string) => {
+    // Parse WiFi status JSON emitted by firmware (e.g. wifi_connected, wifi_client_connected)
+    if (line.startsWith('{')) {
+      try {
+        const j = JSON.parse(line) as Record<string, unknown>;
+        if (typeof j.status === 'string') ws.broadcastStatus(j);
+        return;
+      } catch { /* not JSON */ }
+    }
+    ws.broadcastRawLine(line);
+  });
 
   conn.setErrorHandler((err) => {
-    console.error('[Serial]', err.message);
+    console.error(`[${label}]`, err.message);
     ws.broadcastStatus({ status: 'disconnected', reason: err.message });
-    activeSerial = null;
+    onDisconnect();
     pipeline.reset();
   });
+}
 
-  return conn.open().then(() => { activeSerial = conn; });
+// ---------------------------------------------------------------------------
+// Serial helpers
+// ---------------------------------------------------------------------------
+function openSerial(port: string, baudRate: number): Promise<void> {
+  if (activeSerial) { activeSerial.close(); activeSerial = null; }
+  if (activeWifi)   { activeWifi.close();   activeWifi   = null; }
+
+  const conn = new SerialConnection({ path: port, baudRate });
+  wireHandlers(conn, 'Serial', () => { activeSerial = null; connType = null; });
+
+  return conn.open().then(() => {
+    activeSerial = conn;
+    connType = 'serial';
+    receivedFirstData = false;
+
+    // Robust startup: send 'd' (rescan cells) repeatedly until we get data.
+    const delays = [500, 1200, 2500];
+    delays.forEach((ms, i) => {
+      setTimeout(() => {
+        if (conn !== activeSerial) return;
+        if (receivedFirstData) return;
+        console.log(`[Serial] Sending 'd' (attempt ${i + 1}/${delays.length})`);
+        conn.write('d\n');
+      }, ms);
+    });
+  });
+}
+
+// ---------------------------------------------------------------------------
+// WiFi helpers
+// ---------------------------------------------------------------------------
+function openWifi(host: string, port = 8888): Promise<void> {
+  if (activeSerial) { activeSerial.close(); activeSerial = null; }
+  if (activeWifi)   { activeWifi.close();   activeWifi   = null; }
+
+  const conn = new WifiConnection({ host, port });
+  wireHandlers(conn, 'WiFi', () => { activeWifi = null; connType = null; });
+
+  return conn.open().then(() => {
+    activeWifi = conn;
+    connType = 'wifi';
+    receivedFirstData = false;
+
+    // Robust startup: send 'd' (rescan cells) repeatedly until we get data.
+    // The status reply from 'd' triggers auto-start in the status handler.
+    // Retry up to 5 times at increasing intervals in case the first command
+    // is lost or the ESP hasn't finished its client-connect handshake yet.
+    const delays = [300, 800, 1500, 2500, 4000];
+    delays.forEach((ms, i) => {
+      setTimeout(() => {
+        if (conn !== activeWifi) return;  // connection was replaced
+        if (receivedFirstData) return;    // already streaming — no need to retry
+        console.log(`[WiFi] Sending 'd' (attempt ${i + 1}/${delays.length})`);
+        conn.write('d\n');
+      }, ms);
+    });
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -150,7 +249,7 @@ function openSerial(port: string, baudRate: number): Promise<void> {
 // ---------------------------------------------------------------------------
 ws.setMessageHandler((msg: unknown) => {
   const m = msg as Record<string, unknown>;
-  if (m?.type === 'session_start') { if (activeSerial) startSession(); }
+  if (m?.type === 'session_start') { if (activeConnection()) startSession(); }
   else if (m?.type === 'session_stop') { stopSession(); }
 });
 
@@ -167,7 +266,19 @@ app.post('/api/connect', async (req, res) => {
   if (!port) { res.status(400).json({ error: 'port required' }); return; }
   try {
     await openSerial(port, baudRate);
-    ws.broadcastStatus({ status: 'connected', port });
+    ws.broadcastStatus({ status: 'connected', port, connType: 'serial' });
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
+app.post('/api/connect-wifi', async (req, res) => {
+  const { host, port = 8888 } = req.body as { host: string; port?: number };
+  if (!host) { res.status(400).json({ error: 'host required' }); return; }
+  try {
+    await openWifi(host, port);
+    ws.broadcastStatus({ status: 'connected', host, connType: 'wifi' });
     res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ error: (err as Error).message });
@@ -176,13 +287,20 @@ app.post('/api/connect', async (req, res) => {
 
 app.post('/api/disconnect', (_req, res) => {
   if (activeSerial) { activeSerial.close(); activeSerial = null; }
+  if (activeWifi)   { activeWifi.close();   activeWifi   = null; }
+  connType = null;
   pipeline.reset();
   ws.broadcastStatus({ status: 'disconnected' });
   res.json({ ok: true });
 });
 
+app.post('/api/pipeline/reset', (_req, res) => {
+  pipeline.reset();
+  res.json({ ok: true });
+});
+
 app.post('/api/session/start', (_req, res) => {
-  if (!activeSerial) { res.status(400).json({ error: 'not connected' }); return; }
+  if (!activeConnection()) { res.status(400).json({ error: 'not connected' }); return; }
   startSession();
   res.json({ ok: true });
 });
@@ -201,10 +319,53 @@ app.get('/api/sessions/:id/csv', (req, res) => {
   res.sendFile(filePath);
 });
 
+app.get('/api/sessions', (_req, res) => {
+  const files = fs.readdirSync(SESSIONS_DIR).filter(f => f.endsWith('.csv'));
+  const list = files.map(f => ({
+    id: f.replace('.csv', ''),
+    mtime: fs.statSync(path.join(SESSIONS_DIR, f)).mtime,
+  }));
+  res.json(list.sort((a, b) => b.mtime.getTime() - a.mtime.getTime()));
+});
+
+app.get('/api/sessions/:id/replay', (req, res) => {
+  const filePath = path.join(SESSIONS_DIR, `${req.params.id}.csv`);
+  if (!fs.existsSync(filePath)) { res.status(404).json({ error: 'not found' }); return; }
+  const lines = fs.readFileSync(filePath, 'utf8').trim().split('\n').slice(1); // skip header
+  const p = new Pipeline(DEFAULT_CONFIG);
+  p.startSession(Date.now());
+  const SAMPLE_DT = 1000 / DEFAULT_CONFIG.sampleRate;
+  const frames = lines.map((line, i) => {
+    const cols = line.split(',');
+    const fl = parseFloat(cols[2]), fr = parseFloat(cols[3]);
+    const bl = parseFloat(cols[4]), br = parseFloat(cols[5]);
+    return p.processSample({ t: i * SAMPLE_DT, f0: fl, f1: fr, f2: bl, f3: br });
+  });
+  res.json(frames);
+});
+
+// Accept CSV text, run through pipeline, return frames with computed metrics.
+app.post('/api/replay/compute', (req, res) => {
+  const csvText = req.body as string;
+  if (!csvText || typeof csvText !== 'string') { res.status(400).json({ error: 'csv body required' }); return; }
+  const lines = csvText.trim().split('\n').slice(1); // skip header
+  const p = new Pipeline({ sampleRate: 40, lpfCutoff: 5, metricsInterval: 8 });
+  p.startSession(Date.now());
+  const SAMPLE_DT = 1000 / 40;
+  const frames = lines.map((line, i) => {
+    const cols = line.split(',');
+    const fl = parseFloat(cols[2]), fr = parseFloat(cols[3]);
+    const bl = parseFloat(cols[4]), br = parseFloat(cols[5]);
+    if (isNaN(fl) || isNaN(fr) || isNaN(bl) || isNaN(br)) return null;
+    return p.processSample({ t: i * SAMPLE_DT, f0: fl, f1: fr, f2: bl, f3: br });
+  }).filter(Boolean);
+  res.json(frames);
+});
+
 app.post('/api/cmd', (req, res) => {
   const { cmd } = req.body as { cmd: string };
-  if (!activeSerial) { res.status(400).json({ error: 'not connected' }); return; }
-  activeSerial.write(cmd + '\n');
+  if (!activeConnection()) { res.status(400).json({ error: 'not connected' }); return; }
+  sendToDevice(cmd + '\n');
   res.json({ ok: true });
 });
 

@@ -1,7 +1,7 @@
 /**
  * Main processing pipeline: orchestrates the full signal processing chain.
  *
- * Raw force data → COP calculation → Low-pass filter → Metrics
+ * Raw force data → COP calculation → Metrics
  *
  * COP (Center of Pressure) is derived from 4 corner load cell readings:
  *   COP_x = ((f1 + f3) - (f0 + f2)) / fz  * (plateWidth  / 2)   [mm, +right]
@@ -10,21 +10,19 @@
  * Corner layout (top view):
  *   f0 = front-left   f1 = front-right
  *   f2 = back-left    f3 = back-right
+ *
+ * COP is frozen at last valid position when total force < MIN_FORCE_G (100g)
+ * to prevent noise when nobody is standing on the plate.
  */
 
 import { RawForceData, ProcessedFrame, BalanceMetrics, PipelineConfig, DEFAULT_CONFIG, SessionState, Session } from './types.js';
-import { LowPassFilter } from './low-pass-filter.js';
 import {
   computeSwayRMS, computePathLength, computeSwayVelocity,
-  computeSwayRMS_AP, computeSwayRMS_ML,
-  computeSwayVelocity_AP, computeSwayVelocity_ML,
   computeCentroidMetrics,
   computeEllipseParams,
-  computeFrequencyFeatures,
-  computeJerkRMS,
-  computeTimeInZone,
   computeBalanceScore,
 } from './metrics.js';
+import { LowPassFilter } from './low-pass-filter.js';
 
 // ---------------------------------------------------------------------------
 // Session manager (inlined from session/session-manager.ts)
@@ -103,16 +101,14 @@ class SessionManager {
 // Pipeline
 // ---------------------------------------------------------------------------
 
+const MIN_FORCE_G = 100;
+
 export class Pipeline {
   private config: PipelineConfig;
-  private lpfX: LowPassFilter;
-  private lpfY: LowPassFilter;
   private sessionManager: SessionManager;
 
   private copXBuffer: number[] = [];
   private copYBuffer: number[] = [];
-  private copXVelBuffer: number[] = [];
-  private copYVelBuffer: number[] = [];
 
   private sampleCount = 0;
   private sessionState: SessionState = 'idle';
@@ -121,16 +117,20 @@ export class Pipeline {
   private prevCopX: number | null = null;
   private prevCopY: number | null = null;
   private prevTimestamp: number | null = null;
+  private lastValidCopX = 0;
+  private lastValidCopY = 0;
+  private copXFilter: LowPassFilter;
+  private copYFilter: LowPassFilter;
 
   private onSessionEnd?: (session: Session) => void;
 
   constructor(config: Partial<PipelineConfig> = {}, onSessionEnd?: (session: Session) => void) {
     this.config = { ...DEFAULT_CONFIG, ...config };
-    this.lpfX = new LowPassFilter(this.config.lpfCutoff, this.config.sampleRate);
-    this.lpfY = new LowPassFilter(this.config.lpfCutoff, this.config.sampleRate);
     this.sessionManager = new SessionManager();
     this.onSessionEnd = onSessionEnd;
     this.warmupSamples = Math.round(this.config.warmupMs / (1000 / this.config.sampleRate));
+    this.copXFilter = new LowPassFilter(this.config.lpfCutoff, this.config.sampleRate);
+    this.copYFilter = new LowPassFilter(this.config.lpfCutoff, this.config.sampleRate);
   }
 
   startSession(wallClockMs: number = Date.now()): void {
@@ -153,38 +153,32 @@ export class Pipeline {
     const { f0, f1, f2, f3 } = data;
     const fz = f0 + f1 + f2 + f3;
 
-    let copX = 0, copY = 0;
-    if (fz > 0) {
+    let copX: number;
+    let copY: number;
+    if (fz >= MIN_FORCE_G) {
       copX = ((f1 + f3) - (f0 + f2)) / fz * (this.config.plateWidth  / 2);
       copY = ((f0 + f1) - (f2 + f3)) / fz * (this.config.plateHeight / 2);
+      this.lastValidCopX = copX;
+      this.lastValidCopY = copY;
+    } else {
+      copX = this.lastValidCopX;
+      copY = this.lastValidCopY;
     }
+    const copXFiltered = this.copXFilter.process(copX);
+    const copYFiltered = this.copYFilter.process(copY);
 
-    const copXFiltered = this.lpfX.process(copX);
-    const copYFiltered = this.lpfY.process(copY);
-
-    if (this.sessionState === 'active' && this.prevCopX !== null && this.prevTimestamp !== null) {
-      const dt = (data.t - this.prevTimestamp) / 1000;
-      if (dt > 0) {
-        const vx = (copXFiltered - this.prevCopX) / dt;
-        const vy = (copYFiltered - this.prevCopY!) / dt;
-        this.copXVelBuffer.push(vx);
-        this.copYVelBuffer.push(vy);
-        if (this.copXVelBuffer.length > this.config.metricsWindowSize) {
-          this.copXVelBuffer.shift();
-          this.copYVelBuffer.shift();
-        }
-      }
-    }
     this.prevCopX = copXFiltered;
     this.prevCopY = copYFiltered;
     this.prevTimestamp = data.t;
 
-    if (this.sessionState === 'active') {
-      this.sessionManager.addRawSample(data);
-      this.warmupCounter++;
-      if (this.warmupCounter > this.warmupSamples) {
-        this.copXBuffer.push(copXFiltered);
-        this.copYBuffer.push(copYFiltered);
+    // Always accumulate COP buffer so metrics compute live (not just in sessions).
+    // During an active session the buffer is unbounded (session-total metrics).
+    // When idle/ended, cap to metricsWindowSize for a rolling live preview.
+    this.warmupCounter++;
+    if (this.warmupCounter > this.warmupSamples) {
+      this.copXBuffer.push(copXFiltered);
+      this.copYBuffer.push(copYFiltered);
+      if (this.sessionState !== 'active') {
         const maxSize = this.config.metricsWindowSize;
         if (this.copXBuffer.length > maxSize) {
           this.copXBuffer.shift();
@@ -193,10 +187,13 @@ export class Pipeline {
       }
     }
 
+    if (this.sessionState === 'active') {
+      this.sessionManager.addRawSample(data);
+    }
+
     this.sampleCount++;
     let metrics: BalanceMetrics | null = null;
     if (
-      this.sessionState === 'active' &&
       this.warmupCounter > this.warmupSamples &&
       this.sampleCount >= this.config.metricsInterval &&
       this.copXBuffer.length >= 20
@@ -224,14 +221,10 @@ export class Pipeline {
     const copY = this.copYBuffer;
     const windowDuration = copX.length / this.config.sampleRate;
 
-    const swayRMS         = computeSwayRMS(copX, copY);
-    const pathLength      = computePathLength(copX, copY);
-    const swayVelocity    = computeSwayVelocity(pathLength, windowDuration);
-    const swayRMS_AP      = computeSwayRMS_AP(copY);
-    const swayRMS_ML      = computeSwayRMS_ML(copX);
-    const swayVelocity_AP = computeSwayVelocity_AP(copY, this.config.sampleRate);
-    const swayVelocity_ML = computeSwayVelocity_ML(copX, this.config.sampleRate);
-    const { meanCopX, meanCopY, mdist, maxdist, rangeAP, rangeML } = computeCentroidMetrics(copX, copY);
+    const swayRMS      = computeSwayRMS(copX, copY);
+    const pathLength   = computePathLength(copX, copY);
+    const swayVelocity = computeSwayVelocity(pathLength, windowDuration);
+    const { maxdist, rangeAP, rangeML } = computeCentroidMetrics(copX, copY);
 
     const ellipse = computeEllipseParams(copX, copY);
     const CHI2_95_DF2 = 5.991;
@@ -242,38 +235,27 @@ export class Pipeline {
       angle: ellipse.angle,
     };
 
-    const combinedSway = copX.map((x, i) => Math.sqrt(x * x + copY[i] * copY[i]));
-    const frequencyFeatures = computeFrequencyFeatures(combinedSway, this.config.sampleRate);
-    const jerkRMS    = computeJerkRMS(this.copXVelBuffer, this.copYVelBuffer, this.config.sampleRate);
-    const timeInZone = computeTimeInZone(copX, copY, this.config.stabilityThreshold);
-    const balanceScore = computeBalanceScore(
-      { swayRMS, swayVelocity, stabilityArea, jerkRMS, timeInZone },
-      this.config.scoreWeights,
-    );
+    const balanceScore = computeBalanceScore({ swayRMS, swayVelocity, stabilityArea });
 
     return {
       swayRMS, pathLength, swayVelocity,
-      swayRMS_AP, swayRMS_ML,
-      swayVelocity_AP, swayVelocity_ML,
-      meanCopX, meanCopY,
-      rangeAP, rangeML,
-      mdist, maxdist,
-      stabilityArea, ellipseParams, frequencyFeatures, jerkRMS, timeInZone, balanceScore,
+      rangeAP, rangeML, maxdist,
+      stabilityArea, ellipseParams, balanceScore,
     };
   }
 
   private resetBuffers(): void {
     this.copXBuffer = [];
     this.copYBuffer = [];
-    this.copXVelBuffer = [];
-    this.copYVelBuffer = [];
     this.sampleCount = 0;
     this.warmupCounter = 0;
     this.prevCopX = null;
     this.prevCopY = null;
     this.prevTimestamp = null;
-    this.lpfX.reset();
-    this.lpfY.reset();
+    this.lastValidCopX = 0;
+    this.lastValidCopY = 0;
+    this.copXFilter.reset();
+    this.copYFilter.reset();
   }
 
   setPlateGeometry({ plateWidthMm, plateHeightMm }: { plateWidthMm: number; plateHeightMm: number }): void {
