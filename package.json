@@ -17,7 +17,7 @@
     "dev:local": "pnpm --filter local-server dev",
     "dev:web": "pnpm --filter web dev",
     "dev:desktop": "pnpm --filter force-plate-desktop start",
-    "bundle-server": "pnpm --filter local-server --legacy deploy apps/desktop/server-bundle",
+    "bundle-server": "node apps/desktop/scripts/bundle-server.js",
     "dist:desktop": "pnpm -r build && pnpm run bundle-server && pnpm --filter force-plate-desktop dist"
   }
 }
