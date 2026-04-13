@@ -9,7 +9,9 @@
  *   Info:     [INFO] message
  */
 
-import { SerialPort, ReadlineParser } from 'serialport';
+import type { SerialPort as SerialPortType, ReadlineParser as ReadlineParserType } from 'serialport';
+import pkg from 'serialport';
+const { SerialPort, ReadlineParser } = pkg;
 
 export interface SerialConfig {
   path: string;
@@ -55,8 +57,8 @@ function parsePostingLine(line: string): RawForceData | null {
 }
 
 export class SerialConnection {
-  private port: SerialPort | null = null;
-  private parser: ReadlineParser | null = null;
+  private port: SerialPortType | null = null;
+  private parser: ReadlineParserType | null = null;
   private onData?: DataCallback;
   private onStatus?: StatusCallback;
   private onRawLine?: RawLineCallback;
