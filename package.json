@@ -3,10 +3,21 @@
   "version": "1.0.0",
   "private": true,
   "description": "IMU-based balance board training system with real-time posturography metrics",
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "@serialport/bindings-cpp",
+      "electron",
+      "electron-winstaller",
+      "esbuild"
+    ]
+  },
   "scripts": {
     "build": "pnpm -r build",
     "test": "pnpm -r test",
     "dev:local": "pnpm --filter local-server dev",
-    "dev:web": "pnpm --filter web dev"
+    "dev:web": "pnpm --filter web dev",
+    "dev:desktop": "pnpm --filter force-plate-desktop start",
+    "bundle-server": "pnpm --filter local-server --legacy deploy apps/desktop/server-bundle",
+    "dist:desktop": "pnpm -r build && pnpm run bundle-server && pnpm --filter force-plate-desktop dist"
   }
 }

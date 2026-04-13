@@ -99,16 +99,27 @@ BalanceForcePlate/
 │           └── index.ts               # Public API exports
 │
 ├── apps/
-│   └── local-server/                  # Node.js server + browser dashboard
-│       ├── package.json               # Dependencies: express, serialport, ws, tsx
-│       ├── src/
-│       │   ├── index.ts               # HTTP API + WebSocket + pipeline orchestration
-│       │   ├── serial.ts              # SerialPort wrapper (posting line parser)
-│       │   └── wifi-connection.ts     # WiFi TCP+UDP client, mDNS resolver
-│       └── public/
-│           └── index.html             # Single-file dashboard (HTML + JS + CSS)
+│   ├── local-server/                  # Node.js server + browser dashboard
+│   │   ├── package.json               # Dependencies: express, serialport, ws, tsx
+│   │   ├── src/
+│   │   │   ├── index.ts               # HTTP API + WebSocket + pipeline orchestration
+│   │   │   ├── serial.ts              # SerialPort wrapper (posting line parser)
+│   │   │   └── wifi-connection.ts     # WiFi TCP+UDP client, mDNS resolver
+│   │   └── public/
+│   │       └── index.html             # Single-file dashboard (HTML + JS + CSS)
+│   │
+│   └── desktop/                       # Electron desktop app (Windows installer)
+│       ├── package.json               # electron-builder config, NSIS installer settings
+│       ├── electron-main.js           # Electron main process: starts server, opens window
+│       ├── start.js                   # Dev launcher (handles VSCode ELECTRON_RUN_AS_NODE)
+│       └── build/
+│           └── icon.ico               # Application icon
 │
-├── package.json                       # pnpm workspace root (build, dev:local scripts)
+├── .github/
+│   └── workflows/
+│       └── release.yml                # GitHub Actions: build .exe on tag push, publish release
+│
+├── package.json                       # pnpm workspace root (build, dev:local, dev:desktop scripts)
 ├── pnpm-workspace.yaml                # Workspace: packages/*, apps/*
 ├── tsconfig.base.json                 # Shared TS config: ES2022, strict, declaration maps
 └── .gitignore                         # node_modules, dist, sessions, wifi_config.h, etc.
@@ -372,6 +383,117 @@ Clamped to [0, 100]. Higher = better balance.
 
 ---
 
+## Desktop App (Windows Installer)
+
+The dashboard is available as a standalone Windows desktop application. End users do not need Node.js, pnpm, or any development tools — just download the installer, install, and run.
+
+### How It Works
+
+The desktop app is an [Electron](https://www.electronjs.org/) wrapper around the existing local server and dashboard. When you launch the app:
+
+1. Electron starts the Express HTTP server (port 3000) and WebSocket server (port 8080) inside its main process
+2. A native window opens and loads the dashboard from `http://localhost:3000`
+3. The dashboard works identically to the browser version — same UI, same features, same connection flow
+
+No code changes were made to the server or dashboard. The Electron wrapper (`apps/desktop/electron-main.js`) is a thin ~80-line script that imports the compiled server module and opens a `BrowserWindow`.
+
+### Installing the Desktop App on Windows
+
+Follow these steps to install and run the Force Plate Dashboard on any Windows laptop or PC:
+
+#### Step 1: Download the Installer
+
+1. Go to the [GitHub Releases page](https://github.com/flauga/BalanceForcePlate/releases) in your web browser
+2. Find the latest release (it will be at the top of the page, tagged as something like `v1.0.0`)
+3. Under the **Assets** section of that release, click the `.exe` file to download it (the file will be named something like `Force Plate Dashboard Setup 1.0.0.exe`)
+4. Save the file anywhere on your computer (e.g. your Downloads folder)
+
+#### Step 2: Run the Installer
+
+1. Double-click the downloaded `.exe` file to start the installer
+2. **Windows SmartScreen warning:** Since the app is not code-signed, Windows will show a warning that says "Windows protected your PC" or "Unknown publisher." This is normal for open-source software that has not purchased a code signing certificate. To proceed:
+   - Click **"More info"** (the text link, not the button)
+   - Then click **"Run anyway"**
+3. The NSIS installer wizard will open. Follow the steps:
+   - **Choose Install Location:** You can accept the default location (usually `C:\Users\<YourName>\AppData\Local\Programs\Force Plate Dashboard`) or click Browse to choose a different folder
+   - Click **Install** to begin the installation
+   - Wait for the progress bar to complete
+   - Click **Finish** to close the installer
+
+#### Step 3: Launch the App
+
+You can launch the Force Plate Dashboard in any of these ways:
+
+- **Start Menu:** Click the Windows Start button, search for **"Force Plate Dashboard"**, and click it
+- **Desktop shortcut:** If you chose to create a desktop shortcut during installation, double-click the icon on your desktop
+- **Installation folder:** Navigate to the install location and double-click `Force Plate Dashboard.exe`
+
+When the app starts, you will see a brief loading period while the internal server initializes, then the dashboard will appear in a native window.
+
+#### Step 4: Connect to the ESP32
+
+1. **Power on the ESP32** force plate. If using WiFi, make sure it is connected to the same network as your laptop. If using USB, plug in the USB cable.
+2. **Serial (USB) connection:**
+   - Click the **Refresh** button next to the serial port dropdown to scan for available ports
+   - Select the correct COM port from the dropdown (it will be something like `COM3` or `COM4`)
+   - Click **Connect**
+3. **WiFi connection:**
+   - In the WiFi host field, type the ESP32's IP address or hostname (e.g. `force-plate.local` or `192.168.1.100`)
+   - Click **Connect WiFi**
+4. Once connected, the dashboard will automatically detect calibrated load cells and begin streaming live force data at 40 Hz. You will see the stabilogram, force cards, and metrics update in real time.
+
+#### Step 5: Use the Dashboard
+
+The dashboard works exactly as described in the [Dashboard](#dashboard) section above:
+
+- **View live balance data** on the stabilogram and metrics sidebar
+- **Record sessions** by clicking Start Session, standing on the plate, then clicking Stop
+- **Export CSV files** of recorded sessions for offline analysis
+- **Replay previous sessions** by loading a saved CSV file
+- **Calibrate the force plate** using the Calibration tab
+
+### Uninstalling
+
+To remove the Force Plate Dashboard from your computer:
+
+1. Open **Windows Settings** > **Apps** > **Installed apps** (or **Apps & features** on older Windows versions)
+2. Search for **"Force Plate Dashboard"**
+3. Click the three-dot menu (or the app entry) and select **Uninstall**
+4. Follow the uninstaller prompts
+
+Alternatively, you can run the uninstaller directly from the installation folder (look for `Uninstall Force Plate Dashboard.exe`).
+
+### Release Process (for developers)
+
+The desktop app is built automatically by GitHub Actions when a version tag is pushed:
+
+```bash
+git tag v1.0.0
+git push origin v1.0.0
+```
+
+This triggers the `.github/workflows/release.yml` workflow, which:
+
+1. Checks out the code on a `windows-latest` GitHub Actions runner
+2. Installs pnpm and Node.js 22
+3. Builds all TypeScript packages (`pnpm -r build`)
+4. Creates a standalone server bundle using `pnpm deploy` (resolves workspace dependencies into real `node_modules/` with no symlinks)
+5. Rebuilds the `@serialport/bindings-cpp` native module against Electron's Node.js headers using `@electron/rebuild`
+6. Runs `electron-builder` to package everything into an NSIS Windows installer
+7. Publishes the `.exe` installer to the GitHub Release for that tag
+
+The installer is also uploaded as a GitHub Actions artifact for debugging.
+
+### Desktop App Limitations
+
+- **Windows only** — macOS and Linux support can be added later by extending the GitHub Actions workflow matrix
+- **No code signing** — Windows SmartScreen will show an "Unknown publisher" warning on first run. This is cosmetic and does not affect functionality
+- **No auto-update** — when a new version is released, users must manually download the new installer from GitHub Releases
+- **Fixed ports** — the app uses ports 3000 (HTTP) and 8080 (WebSocket). If another application is using these ports, the server will fail to start
+- **Internet required on first launch** — the dashboard loads Chart.js and Google Fonts from CDN. After the first load, the browser cache may serve them offline
+
+---
+
 ## Getting Started
 
 ### Prerequisites
@@ -397,11 +519,23 @@ pnpm build
 
 ### 3. Run the Dashboard
 
+**Option A: Browser (development)**
 ```bash
 pnpm dev:local
 ```
-
 Open [http://localhost:3000](http://localhost:3000). Select your serial port or enter the ESP32's IP/hostname and click Connect.
+
+**Option B: Desktop app (development)**
+```bash
+pnpm -r build
+pnpm run bundle-server
+pnpm dev:desktop
+```
+This launches the Electron desktop app pointing at the local server code. See [Desktop App](#desktop-app-windows-installer) for end-user installation.
+
+**Option C: Desktop app (end user)**
+
+Download the latest `.exe` installer from [GitHub Releases](https://github.com/flauga/BalanceForcePlate/releases) and follow the [installation guide](#installing-the-desktop-app-on-windows) above.
 
 ### 4. Record a Session
 
@@ -469,6 +603,24 @@ pnpm dev:local
 ```
 
 The `public/` directory is served statically — edit `index.html` and refresh the browser. No build step for frontend changes.
+
+### Desktop App
+
+```bash
+pnpm -r build                          # Build TypeScript
+pnpm run bundle-server                  # Create standalone server bundle
+pnpm dev:desktop                        # Launch Electron app (dev mode)
+pnpm dist:desktop                       # Build full .exe installer locally
+```
+
+The `bundle-server` script uses `pnpm deploy --legacy` to create a self-contained copy of the local server at `apps/desktop/server-bundle/` with all workspace dependencies resolved into real `node_modules/` (no symlinks). The Electron wrapper imports this bundle at runtime.
+
+To release a new version:
+```bash
+git tag v1.0.0
+git push origin v1.0.0
+```
+GitHub Actions will build and publish the `.exe` to the release automatically.
 
 ### Monorepo
 

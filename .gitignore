@@ -5,6 +5,7 @@ node_modules/
 # Build outputs
 dist/
 build/
+!apps/desktop/build/
 .next/
 out/
 
@@ -32,6 +33,10 @@ Thumbs.db
 
 # Sessions data
 sessions/
+
+# Electron desktop app
+apps/desktop/server-bundle/
+apps/desktop/release/
 
 # TypeScript
 *.tsbuildinfo
