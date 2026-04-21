@@ -2,71 +2,73 @@
 
 #include <Arduino.h>
 #include <WiFi.h>
-#include <WiFiUdp.h>
 #include <ESPmDNS.h>
+#include <WebSocketsServer.h>
 #include <functional>
 
+/// One SSID + password pair.
+struct WifiCredential {
+    const char* ssid;
+    const char* password;
+};
+
 /**
- * WiFiStream — streams force plate data over WiFi.
+ * WiFiStream — streams force plate data over a WebSocket.
  *
- * Uses a hybrid transport:
- *   - UDP for high-frequency data lines (40 Hz posting) — fire-and-forget,
- *     no ACK delays, no congestion window stalls.
- *   - TCP for commands (inbound) and status/cal messages (outbound) — these
- *     are low-frequency and need reliability.
+ * Browser clients connect directly to ws://<hostname>.local:<wsPort> (default 80)
+ * and receive every outbound text line (status, cal, posting) as WebSocket
+ * TEXT frames. Inbound TEXT frames are treated as commands (same syntax as
+ * serial), queued, and drained by readLine() in the main loop.
  *
- * The server (Node.js) connects via TCP to receive status/cal and send commands.
- * It also listens on UDP_PORT for the data stream.
+ * Multiple clients may connect simultaneously; broadcasts reach all of them.
  *
- * Serial output is always active; WiFi is an additional channel.
+ * Serial output remains active in parallel for debugging.
  */
 class WiFiStream {
 public:
-    static constexpr uint16_t UDP_PORT = 8889;  // data stream port
+    WiFiStream(uint16_t wsPort = 80, const char* hostname = "force-plate");
 
-    WiFiStream(uint16_t tcpPort, const char* hostname = "force-plate");
+    // Try each credential in order; connect to the first one that responds.
+    // Returns true if WiFi + WebSocket server are up.
+    bool begin(const WifiCredential* creds, size_t count, uint32_t timeoutMs = 10000);
 
-    // Connect to WiFi and start the TCP server + mDNS.
-    bool begin(const char* ssid, const char* password, uint32_t timeoutMs = 10000);
-
-    // Call once per loop iteration to accept new clients.
+    // Call every loop iteration to service the WebSocket.
     void update();
 
-    // Send a data line via UDP to the connected client (for high-frequency posting).
-    // Falls back to TCP if no UDP target is known.
+    // Broadcast a text line to every connected client. Used for the 40 Hz
+    // posting stream (sendData) as well as low-frequency status / info /
+    // calibration messages (println). Both paths are identical over
+    // WebSocket — they only differed on the old TCP+UDP hybrid.
     void sendData(const char* line);
-
-    // Send a line via TCP to the connected client (for status/cal messages).
     void println(const String& line);
     void println(const char* line);
 
-    // Register a callback invoked whenever a new TCP client connects.
+    // Register a callback invoked when a WebSocket client connects, so the
+    // app can re-send initial state (e.g. status JSON) to the new client.
     void setClientConnectedCallback(std::function<void()> cb);
 
-    // Read a newline-terminated command from the TCP client (non-blocking).
+    // Pop the next queued command received from any client (non-blocking).
+    // Returns "" if no command is pending.
     String readLine();
 
-    // True if a TCP client is currently connected.
-    bool clientConnected();
-
-    // True if WiFi is connected.
-    bool wifiConnected() const;
-
-    // IP address as string (or "" if not connected).
-    String ipAddress() const;
-
 private:
-    uint16_t _tcpPort;
+    uint16_t _wsPort;
     const char* _hostname;
-    WiFiServer _server;
-    WiFiClient _client;
-    WiFiUDP    _udp;
-    IPAddress  _clientIP;
-    bool       _hasClientIP = false;
+    WebSocketsServer _ws;
     std::function<void()> _onClientConnected;
-    char    _wifiBuf[64];
-    uint8_t _wifiBufLen = 0;
-    bool     _pendingConnected = false;
-    uint8_t  _writeFails = 0;
-    uint32_t _writeDrops = 0;
+
+    // Single-slot command buffer — commands arrive at human cadence, so a
+    // deeper queue is unnecessary. If a second command arrives before
+    // readLine() drains the first, the newer one is dropped.
+    String _pendingCmd;
+
+    // Set by the event handler; consumed by update().
+    volatile bool _pendingConnected = false;
+
+    bool _postConnect();
+
+    // Static trampoline so WebSocketsServer can call our member handler.
+    static WiFiStream* _instance;
+    static void _onEventStatic(uint8_t num, WStype_t type, uint8_t* payload, size_t length);
+    void _onEvent(uint8_t num, WStype_t type, uint8_t* payload, size_t length);
 };

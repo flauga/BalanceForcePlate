@@ -1,0 +1,1087 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Forceplate Dashboard — WiFi</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<style>
+:root {
+  --bg:       #0e0e0f;
+  --bg2:      #161618;
+  --bg3:      #1e1e21;
+  --bg4:      #26262a;
+  --border:   rgba(255,255,255,.08);
+  --border2:  rgba(255,255,255,.14);
+  --text:     #e8e8ea;
+  --text2:    #888890;
+  --text3:    #55555c;
+  --green:    #4ade80;
+  --green-bg: rgba(74,222,128,.1);
+  --red:      #f87171;
+  --red-bg:   rgba(248,113,113,.1);
+  --amber:    #fbbf24;
+  --amber-bg: rgba(251,191,36,.1);
+  --blue:     #60a5fa;
+  --blue-bg:  rgba(96,165,250,.1);
+  --fl:       #60a5fa;
+  --fr:       #4ade80;
+  --bl:       #fbbf24;
+  --br:       #f87171;
+  --r:  6px;
+  --r2: 10px;
+  --font: 'IBM Plex Sans', sans-serif;
+  --mono: 'IBM Plex Mono', monospace;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html { background: var(--bg); color: var(--text); font-family: var(--font); font-size: 14px; }
+body { max-width: 1600px; margin: 0 auto; padding: 20px 24px 60px; }
+
+.header { display: flex; align-items: center; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
+.header h1 { font-size: 15px; font-weight: 600; letter-spacing: .04em; }
+.header-sub { font-size: 12px; color: var(--text3); font-family: var(--mono); }
+.spacer { flex: 1; }
+.pill { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 500;
+        padding: 4px 10px; border-radius: 20px; background: var(--bg3); border: 1px solid var(--border); color: var(--text2); }
+.dot { width: 7px; height: 7px; border-radius: 50%; background: var(--text3); flex-shrink: 0; }
+.dot.on  { background: var(--green); box-shadow: 0 0 6px var(--green); }
+.dot.rec { background: var(--red);   animation: blink 1s infinite; }
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:.25} }
+
+.tabs { display: flex; gap: 1px; margin-bottom: 18px; border-bottom: 1px solid var(--border); }
+.tab { font-size: 13px; font-weight: 500; padding: 8px 14px; background: none; border: none;
+       color: var(--text2); cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px; transition: color .15s; }
+.tab:hover { color: var(--text); }
+.tab.active { color: var(--text); border-bottom-color: var(--text); }
+.panel { display: none; }
+.panel.active { display: block; }
+
+button { font-family: var(--font); font-size: 13px; font-weight: 500; padding: 7px 14px;
+          border-radius: var(--r); border: 1px solid var(--border2); background: var(--bg3);
+          color: var(--text); cursor: pointer; transition: background .15s, opacity .15s; }
+button:hover { background: var(--bg4); }
+button:active { opacity: .75; }
+button:disabled { opacity: .3; cursor: not-allowed; }
+.btn-green { background: var(--green-bg); border-color: rgba(74,222,128,.3); color: var(--green); }
+.btn-green:hover { background: rgba(74,222,128,.18); }
+.btn-red   { background: var(--red-bg);   border-color: rgba(248,113,113,.3); color: var(--red); }
+.btn-red:hover   { background: rgba(248,113,113,.18); }
+.btn-amber { background: var(--amber-bg); border-color: rgba(251,191,36,.3);  color: var(--amber); }
+.btn-amber:hover { background: rgba(251,191,36,.18); }
+
+input[type=text], input[type=number], input[type=file] {
+  font-family: var(--mono); font-size: 13px; padding: 7px 10px; border-radius: var(--r);
+  border: 1px solid var(--border2); background: var(--bg3); color: var(--text); outline: none; }
+input:focus { border-color: var(--blue); }
+
+.card { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--r2); padding: 14px 16px; margin-bottom: 12px; }
+.card-title { font-size: 11px; font-weight: 500; letter-spacing: .08em; text-transform: uppercase; color: var(--text3); margin-bottom: 10px; }
+
+.controls { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 10px; }
+
+.esp-info { font-size: 11px; color: var(--text3); font-family: var(--mono); padding: 4px 0 10px; min-height: 18px; }
+
+.metrics { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 8px; margin-bottom: 10px; }
+@media (max-width: 600px) { .metrics { grid-template-columns: repeat(2, minmax(0,1fr)); } }
+.metric { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--r2); padding: 12px 14px; }
+.m-label { font-size: 11px; font-weight: 500; text-transform: uppercase; letter-spacing: .07em; color: var(--text3); margin-bottom: 6px; display: flex; align-items: center; gap: 6px; }
+.m-tag { width: 8px; height: 8px; border-radius: 2px; flex-shrink: 0; }
+.m-val  { font-size: 24px; font-weight: 500; font-family: var(--mono); line-height: 1; }
+.m-unit { font-size: 11px; color: var(--text3); font-family: var(--mono); margin-top: 3px; }
+
+.total-row { display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+             background: var(--bg2); border: 1px solid var(--border); border-radius: var(--r2); padding: 12px 16px; margin-bottom: 10px; }
+.total-main { font-size: 32px; font-weight: 500; font-family: var(--mono); color: var(--text); }
+.total-unit { font-size: 13px; color: var(--text3); }
+
+.stab-row { display: flex; gap: 14px; align-items: flex-start; flex-wrap: wrap; }
+#stabCanvas { display: block; border-radius: var(--r); background: var(--bg3); border: 1px solid var(--border); cursor: crosshair; flex: 1 1 0; min-width: 0; aspect-ratio: 1; }
+.stab-big-metrics { display: flex; flex-direction: column; gap: 8px; width: 200px; flex-shrink: 0; }
+.sbm { background: var(--bg3); border: 1px solid var(--border); border-radius: var(--r2); padding: 12px 14px; }
+.sbm-label { font-size: 10px; font-weight: 500; text-transform: uppercase; letter-spacing: .08em; color: var(--text3); margin-bottom: 6px; }
+.sbm-val   { font-size: 28px; font-weight: 500; font-family: var(--mono); line-height: 1; color: var(--text); }
+.sbm-unit  { font-size: 11px; color: var(--text3); font-family: var(--mono); margin-top: 3px; }
+.sbm-sub   { font-size: 11px; color: var(--text3); font-family: var(--mono); margin-top: 4px; display: flex; gap: 8px; }
+.sbm-score { font-size: 40px; font-weight: 700; font-family: var(--mono); line-height: 1; color: var(--green); }
+
+.chart-wrap { position: relative; height: 200px; }
+
+.session-stats { display: flex; gap: 16px; flex-wrap: wrap; padding: 8px 14px;
+                 background: var(--bg2); border: 1px solid var(--border); border-radius: var(--r); margin-bottom: 12px; font-size: 12px; color: var(--text2); }
+.ss-item strong { font-family: var(--mono); color: var(--text); font-weight: 500; }
+
+.log { background: var(--bg); border: 1px solid var(--border); border-radius: var(--r);
+       height: 110px; overflow-y: auto; padding: 6px 10px; font-family: var(--mono); font-size: 11px; color: var(--text3); }
+.log-line { padding: 1px 0; }
+.log-ok   { color: var(--green); }
+.log-warn { color: var(--amber); }
+.log-err  { color: var(--red); }
+
+.cal-grid { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 8px; margin-bottom: 14px; }
+.cal-cell { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--r2); padding: 12px; }
+.cal-cell-name { font-size: 13px; font-weight: 600; margin-bottom: 4px; }
+.cal-cell-status { font-size: 11px; margin-bottom: 8px; font-family: var(--mono); }
+.cal-cell-detail { font-size: 10px; color: var(--text3); font-family: var(--mono); line-height: 1.6; }
+.badge { display: inline-block; font-size: 10px; font-weight: 500; padding: 2px 7px;
+         border-radius: 4px; letter-spacing: .04em; text-transform: uppercase; }
+.badge-green { background: var(--green-bg); color: var(--green); }
+.badge-red   { background: var(--red-bg);   color: var(--red); }
+.badge-amber { background: var(--amber-bg); color: var(--amber); }
+
+.c-fl { color: var(--fl); } .c-fr { color: var(--fr); }
+.c-bl { color: var(--bl); } .c-br { color: var(--br); }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>FORCEPLATE</h1>
+  <span class="header-sub">RSL301 · HX711 · ESP32 · WiFi</span>
+  <div class="spacer"></div>
+  <span class="pill" id="hz-pill" style="display:none"><span id="hz-val">–</span> Hz</span>
+  <span class="pill" style="margin-left:6px"><span class="dot" id="status-dot"></span><span id="status-text">Disconnected</span></span>
+</div>
+
+<div class="tabs">
+  <button class="tab active" data-tab="live">Live</button>
+  <button class="tab" data-tab="calibration">Calibration</button>
+  <button class="tab" data-tab="about">About</button>
+</div>
+
+<!-- ─── LIVE TAB ────────────────────────────────────────────────────────── -->
+<div class="panel active" id="panel-live">
+
+  <div class="controls">
+    <input type="text" id="host-input" value="force-plate.local" style="width:220px" placeholder="host or IP">
+    <button class="btn-green" id="btn-connect">Connect</button>
+    <button class="btn-red" id="btn-disconnect" disabled>Disconnect</button>
+    <button class="btn-green" id="btn-record" disabled>▶ Start Session</button>
+    <button class="btn-red" id="btn-stop" disabled>■ Stop &amp; Save CSV</button>
+    <button id="btn-tare" disabled>Tare</button>
+    <button id="btn-status" disabled>Status</button>
+    <button id="btn-reset-view">Reset View</button>
+  </div>
+
+  <div class="controls" id="cmd-row" style="display:none">
+    <button onclick="sendCmd('start')" class="btn-green">START</button>
+    <button onclick="sendCmd('stop')"  class="btn-red">STOP</button>
+    <button onclick="sendCmd('s')">STATUS</button>
+    <button onclick="sendCmd('h')">HELP</button>
+    <button onclick="sendCmd('r')">RAW</button>
+    <input type="text" id="cmd-input" placeholder="e.g. t1, x2, c" style="width:130px">
+    <button id="btn-send-cmd">Send</button>
+    <input type="file" id="replay-file" accept=".csv" style="display:none">
+    <button id="btn-open-csv">Open CSV…</button>
+    <span id="replay-file-name" style="font-size:11px;color:var(--text3);max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></span>
+    <button id="btn-replay" disabled>▶ Replay</button>
+    <button id="btn-replay-stop" class="btn-red" style="display:none">■ Stop Replay</button>
+  </div>
+
+  <div class="esp-info" id="esp-info"></div>
+
+  <div class="metrics">
+    <div class="metric"><div class="m-label"><span class="m-tag" style="background:var(--fl)"></span>Front-Left</div>
+      <div class="m-val c-fl" id="v0">–</div><div class="m-unit">g</div></div>
+    <div class="metric"><div class="m-label"><span class="m-tag" style="background:var(--fr)"></span>Front-Right</div>
+      <div class="m-val c-fr" id="v1">–</div><div class="m-unit">g</div></div>
+    <div class="metric"><div class="m-label"><span class="m-tag" style="background:var(--bl)"></span>Back-Left</div>
+      <div class="m-val c-bl" id="v2">–</div><div class="m-unit">g</div></div>
+    <div class="metric"><div class="m-label"><span class="m-tag" style="background:var(--br)"></span>Back-Right</div>
+      <div class="m-val c-br" id="v3">–</div><div class="m-unit">g</div></div>
+  </div>
+
+  <div class="total-row">
+    <div>
+      <div style="font-size:10px;text-transform:uppercase;letter-spacing:.07em;color:var(--text3);margin-bottom:2px">Total Force</div>
+      <span class="total-main" id="v-total">–</span><span class="total-unit"> g</span>
+    </div>
+  </div>
+
+  <div class="card">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+      <span class="card-title">Stabilogram</span>
+      <span style="font-size:11px;color:var(--text3)">Trail: 5 s</span>
+    </div>
+    <div class="stab-row">
+      <canvas id="stabCanvas" width="1060" height="1060"></canvas>
+      <div class="stab-big-metrics">
+        <div class="sbm">
+          <div class="sbm-label">Balance Score</div>
+          <div class="sbm-score" id="sbm-balance-score">–</div>
+          <div class="sbm-unit">/100</div>
+        </div>
+        <div class="sbm"><div class="sbm-label">Sway Velocity</div><div class="sbm-val" id="sbm-vel-total">–</div><div class="sbm-unit">mm/s</div></div>
+        <div class="sbm"><div class="sbm-label">Sway Length</div>  <div class="sbm-val" id="sbm-path-length">–</div><div class="sbm-unit">mm</div></div>
+        <div class="sbm"><div class="sbm-label">Sway RMS</div>     <div class="sbm-val" id="sbm-sway-rms">–</div><div class="sbm-unit">mm</div></div>
+        <div class="sbm"><div class="sbm-label">Sway Area</div>    <div class="sbm-val" id="sbm-ellipse">–</div><div class="sbm-unit">mm²</div></div>
+        <div class="sbm">
+          <div class="sbm-label">Max Dist</div>
+          <div class="sbm-val" id="sbm-maxdist">–</div>
+          <div class="sbm-unit">mm</div>
+          <div class="sbm-sub"><span>AP <span id="sbm-range-ap">–</span></span><span>ML <span id="sbm-range-ml">–</span></span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+      <span class="card-title">Force over time</span>
+      <span style="font-size:11px;color:var(--text3)">last 600 samples</span>
+    </div>
+    <div class="chart-wrap"><canvas id="forceChart"></canvas></div>
+  </div>
+
+  <div class="session-stats">
+    <span class="ss-item">Samples: <strong id="ss-n">0</strong></span>
+    <span class="ss-item">Duration: <strong id="ss-dur">–</strong></span>
+    <span class="ss-item">Peak total: <strong id="ss-peak">–</strong> g</span>
+    <span class="ss-item">Avg total: <strong id="ss-avg">–</strong> g</span>
+  </div>
+
+  <div class="log" id="log"></div>
+</div>
+
+<!-- ─── CALIBRATION TAB ─────────────────────────────────────────────────── -->
+<div class="panel" id="panel-calibration">
+  <div id="cal-status-grid" class="cal-grid"></div>
+  <div class="controls" style="margin-top:4px">
+    <button id="btn-cal-all" disabled>Calibrate all cells</button>
+    <button id="btn-reset-all" class="btn-red" disabled>Reset all calibration</button>
+  </div>
+  <p style="font-size:12px;color:var(--text2);line-height:1.6;margin:8px 0 10px">
+    The grid above reflects each cell's calibration state from <code>[STATUS]</code>.
+    <strong>Calibrate all cells</strong> sends <code>c</code> to the device, which starts the
+    2-point calibration wizard. The wizard is interactive and currently runs on the
+    <strong>USB serial port only</strong> — open <code>pio device monitor</code> (115200 baud)
+    on a computer attached to the ESP32 and answer the prompts there. Once calibration
+    finishes, the updated scale factors appear here automatically. <strong>Reset all
+    calibration</strong> (<code>x</code>) works over WebSocket.
+  </p>
+  <div class="log" id="cal-log" style="height:220px"></div>
+</div>
+
+<!-- ─── ABOUT TAB ───────────────────────────────────────────────────────── -->
+<div class="panel" id="panel-about">
+  <div class="card">
+    <div class="card-title">WebSocket Protocol</div>
+    <p style="font-size:12px;color:var(--text2);line-height:1.8;font-family:var(--mono)">
+      Default: <span style="color:var(--text)">ws://force-plate.local:80</span><br>
+      Posting: <span style="color:var(--text)">[&lt;ms&gt;ms] FL:&lt;g&gt;g FR:&lt;g&gt;g BL:&lt;g&gt;g BR:&lt;g&gt;g TOTAL:&lt;g&gt;g</span><br>
+      Status:  <span style="color:var(--text)">[STATUS] {json}</span><br>
+      Cal:     <span style="color:var(--text)">[CAL] / [CAL:&lt;name&gt;] prompts</span><br>
+      Info:    <span style="color:var(--text)">[INFO] message</span><br>
+      Commands: <span style="color:var(--text)">h · s · d · l · r · start · read · stop · t[1-4] · c · x[1-4]</span>
+    </p>
+  </div>
+  <div class="card">
+    <div class="card-title">CSV format</div>
+    <p style="font-size:12px;color:var(--text2);line-height:1.8;font-family:var(--mono)">
+      timestamp, elapsed_s, device_ms, fl_g, fr_g, bl_g, br_g, total_g, cop_x_mm, cop_y_mm
+    </p>
+  </div>
+  <div class="card">
+    <div class="card-title">Signal processing</div>
+    <p style="font-size:12px;color:var(--text2);line-height:1.7">
+      COP computed from the 4 calibrated corner forces (plate 339.411 × 339.411 mm).
+      2nd-order Butterworth low-pass at 5 Hz cutoff (sample rate 40 Hz).
+      Metrics (sway RMS, path length, mean velocity, 95 % confidence ellipse area, AP/ML range,
+      max distance, composite balance score) recomputed every 8 samples over a rolling
+      800-sample (10 s) window. 500 ms warmup at session start discards step-on artefact.
+    </p>
+  </div>
+</div>
+
+<script>
+'use strict';
+
+// ════════════════════════════════════════════════════════════════════════════
+//  Config
+// ════════════════════════════════════════════════════════════════════════════
+const WS_PORT          = 80;
+const SAMPLE_RATE_HZ   = 40;
+const LPF_CUTOFF_HZ    = 5.0;
+const METRICS_INTERVAL = 8;     // recompute metrics every N samples
+const METRICS_WINDOW   = 800;   // rolling window in samples (10 s @ 40 Hz)
+const WARMUP_MS        = 500;
+const PLATE_W_MM       = 339.411;
+const PLATE_H_MM       = 339.411;
+const CHART_MAX        = 600;
+const TRAIL_SECONDS    = 5;
+const MIN_FORCE_G      = 100;   // freeze COP when below this
+
+const $ = id => document.getElementById(id);
+
+// ════════════════════════════════════════════════════════════════════════════
+//  Signal processing — ported verbatim from packages/processing/
+// ════════════════════════════════════════════════════════════════════════════
+
+class LowPassFilter {
+  // 2nd-order Butterworth via bilinear transform, Direct Form II Transposed.
+  constructor(cutoffHz = 5.0, sampleRate = 40) {
+    const wc = Math.tan((Math.PI * cutoffHz) / sampleRate);
+    const wc2 = wc * wc;
+    const sqrt2 = Math.SQRT2;
+    const k = 1.0 / (1.0 + sqrt2 * wc + wc2);
+    this.b0 = wc2 * k;
+    this.b1 = 2.0 * this.b0;
+    this.b2 = this.b0;
+    this.a1 = 2.0 * (wc2 - 1.0) * k;
+    this.a2 = (1.0 - sqrt2 * wc + wc2) * k;
+    this.z1 = 0; this.z2 = 0;
+  }
+  process(x) {
+    const y = this.b0 * x + this.z1;
+    this.z1 = this.b1 * x - this.a1 * y + this.z2;
+    this.z2 = this.b2 * x - this.a2 * y;
+    return y;
+  }
+  reset() { this.z1 = 0; this.z2 = 0; }
+}
+
+function computeSwayRMS(xs, ys) {
+  const n = xs.length; if (!n) return 0;
+  let s = 0; for (let i = 0; i < n; i++) s += xs[i]*xs[i] + ys[i]*ys[i];
+  return Math.sqrt(s / n);
+}
+function computePathLength(xs, ys) {
+  const n = xs.length; if (n < 2) return 0;
+  let L = 0;
+  for (let i = 1; i < n; i++) { const dx = xs[i]-xs[i-1], dy = ys[i]-ys[i-1]; L += Math.sqrt(dx*dx + dy*dy); }
+  return L;
+}
+function computeCentroidMetrics(xs, ys) {
+  const n = xs.length;
+  if (!n) return { maxdist: 0, rangeAP: 0, rangeML: 0 };
+  let sx = 0, sy = 0;
+  for (let i = 0; i < n; i++) { sx += xs[i]; sy += ys[i]; }
+  const mx = sx/n, my = sy/n;
+  let maxd = 0, minX = xs[0], maxX = xs[0], minY = ys[0], maxY = ys[0];
+  for (let i = 0; i < n; i++) {
+    const dx = xs[i]-mx, dy = ys[i]-my;
+    const d = Math.sqrt(dx*dx + dy*dy);
+    if (d > maxd) maxd = d;
+    if (xs[i] < minX) minX = xs[i]; if (xs[i] > maxX) maxX = xs[i];
+    if (ys[i] < minY) minY = ys[i]; if (ys[i] > maxY) maxY = ys[i];
+  }
+  return { maxdist: maxd, rangeAP: maxY - minY, rangeML: maxX - minX };
+}
+const CHI2_95_DF2 = 5.991;
+function computeEllipseParams(xs, ys) {
+  const n = xs.length;
+  if (n < 3) return { centerX: 0, centerY: 0, semiAxisA: 0, semiAxisB: 0, angle: 0, lambda1: 0, lambda2: 0 };
+  let mx = 0, my = 0;
+  for (let i = 0; i < n; i++) { mx += xs[i]; my += ys[i]; }
+  mx /= n; my /= n;
+  let vx = 0, vy = 0, cxy = 0;
+  for (let i = 0; i < n; i++) { const dx = xs[i]-mx, dy = ys[i]-my; vx += dx*dx; vy += dy*dy; cxy += dx*dy; }
+  vx /= (n-1); vy /= (n-1); cxy /= (n-1);
+  const tr = vx + vy, det = vx*vy - cxy*cxy;
+  const disc = Math.sqrt(Math.max(0, tr*tr - 4*det));
+  const lam1 = (tr + disc) / 2, lam2 = (tr - disc) / 2;
+  return {
+    centerX: mx, centerY: my,
+    semiAxisA: Math.sqrt(Math.max(0, lam1) * CHI2_95_DF2),
+    semiAxisB: Math.sqrt(Math.max(0, lam2) * CHI2_95_DF2),
+    angle: 0.5 * Math.atan2(2*cxy, vx - vy) * (180/Math.PI),
+    lambda1: lam1, lambda2: lam2,
+  };
+}
+const BSCORE_NORM = {
+  swayRMS:       { center: 10.0,  scale: 6.0 },
+  swayVelocity:  { center: 20.0,  scale: 12.0 },
+  stabilityArea: { center: 500.0, scale: 300.0 },
+};
+function sigmoidInv(v, c, s) { return 1.0 / (1.0 + Math.exp((v - c) / s)); }
+function computeBalanceScore(m) {
+  const a = sigmoidInv(m.swayRMS,       BSCORE_NORM.swayRMS.center,       BSCORE_NORM.swayRMS.scale);
+  const b = sigmoidInv(m.swayVelocity,  BSCORE_NORM.swayVelocity.center,  BSCORE_NORM.swayVelocity.scale);
+  const c = sigmoidInv(m.stabilityArea, BSCORE_NORM.stabilityArea.center, BSCORE_NORM.stabilityArea.scale);
+  return Math.max(0, Math.min(100, (a + b + c) / 3 * 100));
+}
+
+// Pipeline — stateful wrapper around the per-sample transform
+class Pipeline {
+  constructor() {
+    this.copXFilter = new LowPassFilter(LPF_CUTOFF_HZ, SAMPLE_RATE_HZ);
+    this.copYFilter = new LowPassFilter(LPF_CUTOFF_HZ, SAMPLE_RATE_HZ);
+    this.xs = []; this.ys = [];
+    this.warmupSamples = Math.round(WARMUP_MS / (1000 / SAMPLE_RATE_HZ));
+    this.warmupCount = 0;
+    this.sinceMetrics = 0;
+    this.lastValidCopX = 0; this.lastValidCopY = 0;
+    this.sessionActive = false;
+  }
+  reset() {
+    this.copXFilter.reset(); this.copYFilter.reset();
+    this.xs = []; this.ys = [];
+    this.warmupCount = 0; this.sinceMetrics = 0;
+    this.lastValidCopX = 0; this.lastValidCopY = 0;
+  }
+  startSession() { this.sessionActive = true; this.reset(); }
+  stopSession()  { this.sessionActive = false; }
+
+  // Accepts calibrated grams per corner. Returns { copX, copY, copXF, copYF, metrics|null }.
+  process(fl, fr, bl, br) {
+    const fz = fl + fr + bl + br;
+    let copX, copY;
+    if (fz >= MIN_FORCE_G) {
+      copX = ((fr + br) - (fl + bl)) / fz * (PLATE_W_MM / 2);
+      copY = ((fl + fr) - (bl + br)) / fz * (PLATE_H_MM / 2);
+      this.lastValidCopX = copX; this.lastValidCopY = copY;
+    } else {
+      copX = this.lastValidCopX; copY = this.lastValidCopY;
+    }
+    const copXF = this.copXFilter.process(copX);
+    const copYF = this.copYFilter.process(copY);
+
+    this.warmupCount++;
+    let metrics = null;
+    if (this.warmupCount > this.warmupSamples) {
+      this.xs.push(copXF); this.ys.push(copYF);
+      // During active sessions keep the full buffer (session-wide metrics);
+      // otherwise cap to the rolling window.
+      if (!this.sessionActive && this.xs.length > METRICS_WINDOW) {
+        this.xs.shift(); this.ys.shift();
+      }
+      this.sinceMetrics++;
+      if (this.sinceMetrics >= METRICS_INTERVAL && this.xs.length >= 20) {
+        this.sinceMetrics = 0;
+        const duration = this.xs.length / SAMPLE_RATE_HZ;
+        const swayRMS      = computeSwayRMS(this.xs, this.ys);
+        const pathLength   = computePathLength(this.xs, this.ys);
+        const swayVelocity = duration > 0 ? pathLength / duration : 0;
+        const cm = computeCentroidMetrics(this.xs, this.ys);
+        const ep = computeEllipseParams(this.xs, this.ys);
+        const stabilityArea = Math.PI * CHI2_95_DF2 * Math.sqrt(Math.max(0, ep.lambda1 * ep.lambda2));
+        const balanceScore = computeBalanceScore({ swayRMS, swayVelocity, stabilityArea });
+        metrics = {
+          swayRMS, pathLength, swayVelocity, stabilityArea, balanceScore,
+          maxdist: cm.maxdist, rangeAP: cm.rangeAP, rangeML: cm.rangeML,
+          ellipseParams: { centerX: ep.centerX, centerY: ep.centerY,
+                           semiAxisA: ep.semiAxisA, semiAxisB: ep.semiAxisB, angle: ep.angle },
+        };
+      }
+    }
+    return { copX, copY, copXF, copYF, metrics };
+  }
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+//  App state
+// ════════════════════════════════════════════════════════════════════════════
+let ws = null;
+let userDisconnect = false;
+let connected = false;
+let sessionActive = false;
+let replayActive = false;
+let replayHandles = [];
+let replayRows = [];
+
+let pipeline = new Pipeline();
+let trailBuffer = [];              // {x, y, t}, last TRAIL_SECONDS
+let lastCornerForces = [null, null, null, null];
+let lastMetrics = null;
+let sessionStart = 0;
+let sessionSamples = 0;
+let sessionPeak = 0;
+let sessionTotalAcc = 0;
+let csvRows = [];                   // recorded CSV lines
+let sampleTimes = [];               // for Hz pill
+let timerHandle = null;
+
+const stabCanvas = $('stabCanvas');
+const stabCtx    = stabCanvas.getContext('2d');
+const cornerVals = [0,1,2,3].map(i => $('v' + i));
+
+// ════════════════════════════════════════════════════════════════════════════
+//  Chart.js — force over time
+// ════════════════════════════════════════════════════════════════════════════
+const chartLabels = [];
+const chartDatasets = [
+  { label: 'FL', borderColor: '#60a5fa', data: [], pointRadius: 0, borderWidth: 1.5, tension: .2 },
+  { label: 'FR', borderColor: '#4ade80', data: [], pointRadius: 0, borderWidth: 1.5, tension: .2 },
+  { label: 'BL', borderColor: '#fbbf24', data: [], pointRadius: 0, borderWidth: 1.5, tension: .2 },
+  { label: 'BR', borderColor: '#f87171', data: [], pointRadius: 0, borderWidth: 1.5, tension: .2 },
+];
+const forceChart = new Chart($('forceChart'), {
+  type: 'line',
+  data: { labels: chartLabels, datasets: chartDatasets },
+  options: {
+    animation: false, responsive: true, maintainAspectRatio: false,
+    scales: {
+      x: { display: false },
+      y: { grid: { color: 'rgba(255,255,255,.05)' },
+           ticks: { color: '#55555c', font: { family: 'IBM Plex Mono', size: 10 } } },
+    },
+    plugins: { legend: { display: false } },
+  },
+});
+
+// ════════════════════════════════════════════════════════════════════════════
+//  Stabilogram canvas — static background is cached on an offscreen canvas
+// ════════════════════════════════════════════════════════════════════════════
+let stabBg = null;
+function getStabBg(W, H) {
+  if (stabBg && stabBg.width === W && stabBg.height === H) return stabBg;
+  stabBg = document.createElement('canvas');
+  stabBg.width = W; stabBg.height = H;
+  const ctx = stabBg.getContext('2d');
+  const PAD = 38;
+  const scaleX = (W / 2 - PAD) / (PLATE_W_MM / 2);
+  const scaleY = (H / 2 - PAD) / (PLATE_H_MM / 2);
+  const scaleR = Math.min(scaleX, scaleY);
+  const rings = [50, 100, 150, 170];
+  const alphas = [0.09, 0.12, 0.16, 0.22];
+  ctx.font = '10px IBM Plex Mono, monospace';
+  rings.forEach((mm, i) => {
+    const r = mm * scaleR;
+    ctx.beginPath(); ctx.arc(W/2, H/2, r, 0, Math.PI*2);
+    ctx.strokeStyle = `rgba(255,255,255,${alphas[i]})`;
+    ctx.lineWidth = i === rings.length - 1 ? 1.5 : 1;
+    ctx.setLineDash(i === rings.length - 1 ? [] : [3, 5]);
+    ctx.stroke(); ctx.setLineDash([]);
+    ctx.fillStyle = `rgba(255,255,255,${alphas[i] + 0.12})`;
+    ctx.fillText(String(mm), W/2 + r + 4, H/2 + 4);
+  });
+  const tlx = W/2 + (-PLATE_W_MM/2) * scaleX;
+  const tly = H/2 - ( PLATE_H_MM/2) * scaleY;
+  const brx = W/2 + ( PLATE_W_MM/2) * scaleX;
+  const bry = H/2 - (-PLATE_H_MM/2) * scaleY;
+  ctx.strokeStyle = 'rgba(255,255,255,0.25)'; ctx.lineWidth = 1.5;
+  ctx.strokeRect(tlx, tly, brx - tlx, bry - tly);
+  ctx.strokeStyle = 'rgba(255,255,255,0.14)'; ctx.lineWidth = 1;
+  ctx.setLineDash([4, 5]);
+  ctx.beginPath(); ctx.moveTo(W/2, tly); ctx.lineTo(W/2, bry); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(tlx, H/2); ctx.lineTo(brx, H/2); ctx.stroke();
+  ctx.setLineDash([]);
+  return stabBg;
+}
+function mmToCanvas(xMm, yMm, W, H, sx, sy) {
+  return { cx: W/2 + xMm * sx, cy: H/2 - yMm * sy };
+}
+function drawStabilogram() {
+  const W = stabCanvas.width, H = stabCanvas.height, PAD = 38;
+  const sx = (W/2 - PAD) / (PLATE_W_MM / 2);
+  const sy = (H/2 - PAD) / (PLATE_H_MM / 2);
+
+  stabCtx.clearRect(0, 0, W, H);
+  stabCtx.drawImage(getStabBg(W, H), 0, 0);
+
+  const tlx = W/2 + (-PLATE_W_MM/2) * sx;
+  const tly = H/2 - ( PLATE_H_MM/2) * sy;
+  const brx = W/2 + ( PLATE_W_MM/2) * sx;
+  const bry = H/2 - (-PLATE_H_MM/2) * sy;
+  const corners = [
+    { x: brx, y: tly, ax: -1, ay:  1, name: 'FL', color: '#60a5fa' },
+    { x: tlx, y: tly, ax:  1, ay:  1, name: 'FR', color: '#4ade80' },
+    { x: brx, y: bry, ax: -1, ay: -1, name: 'BL', color: '#fbbf24' },
+    { x: tlx, y: bry, ax:  1, ay: -1, name: 'BR', color: '#f87171' },
+  ];
+  stabCtx.font = 'bold 11px IBM Plex Mono, monospace';
+  corners.forEach((c, i) => {
+    const v = lastCornerForces[i];
+    const label = v != null ? `${c.name} ${Math.round(v)}g` : c.name;
+    stabCtx.fillStyle = c.color;
+    stabCtx.textAlign = c.ax > 0 ? 'left' : 'right';
+    stabCtx.fillText(label, c.x + (c.ax > 0 ? 7 : -7), c.y + (c.ay > 0 ? 16 : -7));
+  });
+  stabCtx.textAlign = 'left';
+
+  // 95 % confidence ellipse
+  if (lastMetrics && lastMetrics.ellipseParams) {
+    const ep = lastMetrics.ellipseParams;
+    const ex = W/2 + (-ep.centerX) * sx;
+    const ey = H/2 - ep.centerY * sy;
+    const aR = ep.semiAxisA * sx, bR = ep.semiAxisB * sy;
+    const ang = ep.angle * Math.PI / 180;
+    const early = lastMetrics.pathLength != null && lastMetrics.pathLength < 30;
+    stabCtx.save();
+    stabCtx.translate(ex, ey); stabCtx.rotate(ang);
+    stabCtx.beginPath();
+    stabCtx.ellipse(0, 0, Math.max(aR, 1), Math.max(bR, 1), 0, 0, Math.PI*2);
+    stabCtx.fillStyle = early ? 'rgba(251,191,36,0.06)' : 'rgba(251,191,36,0.12)';
+    stabCtx.fill();
+    stabCtx.strokeStyle = early ? 'rgba(251,191,36,0.35)' : 'rgba(251,191,36,0.70)';
+    stabCtx.lineWidth = 1.5;
+    stabCtx.setLineDash(early ? [4, 4] : []);
+    stabCtx.stroke(); stabCtx.setLineDash([]);
+    stabCtx.restore();
+  }
+
+  // COP trail — banded opacity gradient
+  const N = trailBuffer.length;
+  if (N > 1) {
+    const BANDS = 8, bandSize = Math.ceil((N - 1) / BANDS);
+    for (let b = 0; b < BANDS; b++) {
+      const s = b * bandSize, e = Math.min(s + bandSize, N - 1);
+      if (s >= e) break;
+      const t = (s + e) / 2 / Math.max(N - 2, 1);
+      stabCtx.beginPath();
+      const p0 = mmToCanvas(trailBuffer[s].x, trailBuffer[s].y, W, H, sx, sy);
+      stabCtx.moveTo(p0.cx, p0.cy);
+      for (let i = s + 1; i <= e; i++) {
+        const p = mmToCanvas(trailBuffer[i].x, trailBuffer[i].y, W, H, sx, sy);
+        stabCtx.lineTo(p.cx, p.cy);
+      }
+      stabCtx.strokeStyle = `rgba(148,163,184,${(0.12 + 0.60 * t).toFixed(2)})`;
+      stabCtx.lineWidth = 0.8 + 1.4 * t;
+      stabCtx.stroke();
+    }
+  }
+
+  // Current COP dot
+  if (N > 0) {
+    const last = trailBuffer[N - 1];
+    const lp = mmToCanvas(last.x, last.y, W, H, sx, sy);
+    stabCtx.beginPath(); stabCtx.arc(lp.cx, lp.cy, 9, 0, Math.PI*2);
+    stabCtx.fillStyle = 'rgba(74,222,128,0.15)'; stabCtx.fill();
+    stabCtx.beginPath(); stabCtx.arc(lp.cx, lp.cy, 5, 0, Math.PI*2);
+    stabCtx.fillStyle = '#4ade80';
+    stabCtx.shadowColor = '#4ade80'; stabCtx.shadowBlur = 12;
+    stabCtx.fill(); stabCtx.shadowBlur = 0;
+  }
+}
+
+// Schedule a redraw at most once per animation frame.
+let pendingRender = false;
+function scheduleRender() {
+  if (pendingRender) return;
+  pendingRender = true;
+  requestAnimationFrame(() => { pendingRender = false; drawStabilogram(); });
+}
+drawStabilogram();
+
+// ════════════════════════════════════════════════════════════════════════════
+//  Metrics display
+// ════════════════════════════════════════════════════════════════════════════
+function updateMetricsDisplay(m) {
+  setText('sbm-balance-score', m && m.balanceScore  != null ? m.balanceScore.toFixed(0)  : '–');
+  setText('sbm-vel-total',     m && m.swayVelocity  != null ? m.swayVelocity.toFixed(1)  : '–');
+  setText('sbm-path-length',   m && m.pathLength    != null ? m.pathLength.toFixed(0)    : '–');
+  setText('sbm-sway-rms',      m && m.swayRMS       != null ? m.swayRMS.toFixed(2)       : '–');
+  setText('sbm-ellipse',       m && m.stabilityArea != null ? m.stabilityArea.toFixed(0) : '–');
+  setText('sbm-maxdist',       m && m.maxdist       != null ? m.maxdist.toFixed(2)       : '–');
+  setText('sbm-range-ap',      m && m.rangeAP       != null ? m.rangeAP.toFixed(1)       : '–');
+  setText('sbm-range-ml',      m && m.rangeML       != null ? m.rangeML.toFixed(1)       : '–');
+}
+
+function clearVisuals() {
+  trailBuffer = []; lastMetrics = null;
+  stabBg = null;
+  lastCornerForces = [null, null, null, null];
+  chartLabels.length = 0;
+  chartDatasets.forEach(d => { d.data.length = 0; });
+  forceChart.update('none');
+  cornerVals.forEach(el => el.textContent = '–');
+  $('v-total').textContent = '–';
+  updateMetricsDisplay(null);
+  drawStabilogram();
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+//  Frame pipeline — called from WebSocket and from CSV replay
+// ════════════════════════════════════════════════════════════════════════════
+const LINE_RE = /\[(\d+)ms\]\s+FL:(-?[\d.]+)g?\s+FR:(-?[\d.]+)g?\s+BL:(-?[\d.]+)g?\s+BR:(-?[\d.]+)g?(?:\s+TOTAL:(-?[\d.]+)g?)?/;
+
+function handleFrame(deviceMs, fl, fr, bl, br, isCalibrated) {
+  const forces = [fl, fr, bl, br].map(v => Math.max(0, v));
+  lastCornerForces = forces;
+  forces.forEach((v, i) => { cornerVals[i].textContent = Math.round(v); });
+  const total = forces[0] + forces[1] + forces[2] + forces[3];
+  $('v-total').textContent = Math.round(total);
+
+  // Chart
+  chartLabels.push('');
+  chartDatasets[0].data.push(forces[0]);
+  chartDatasets[1].data.push(forces[1]);
+  chartDatasets[2].data.push(forces[2]);
+  chartDatasets[3].data.push(forces[3]);
+  if (chartLabels.length > CHART_MAX) {
+    chartLabels.shift();
+    chartDatasets.forEach(d => d.data.shift());
+  }
+
+  // Signal processing (calibrated grams only — raw ADC can't be turned into COP)
+  if (isCalibrated) {
+    const p = pipeline.process(forces[0], forces[1], forces[2], forces[3]);
+    // Negate X: board is mounted with left/right flipped in the UI (mirrors existing dashboard).
+    const cx = Math.max(-PLATE_W_MM/2, Math.min(PLATE_W_MM/2, -p.copXF));
+    const cy = Math.max(-PLATE_H_MM/2, Math.min(PLATE_H_MM/2,  p.copYF));
+    trailBuffer.push({ x: cx, y: cy, t: deviceMs });
+    const cutoff = deviceMs - TRAIL_SECONDS * 1000;
+    while (trailBuffer.length && trailBuffer[0].t < cutoff) trailBuffer.shift();
+    if (p.metrics) { lastMetrics = p.metrics; updateMetricsDisplay(p.metrics); }
+
+    if (sessionActive) {
+      const elapsed = (Date.now() - sessionStart) / 1000;
+      csvRows.push([
+        new Date().toISOString(), elapsed.toFixed(3), deviceMs,
+        forces[0].toFixed(3), forces[1].toFixed(3), forces[2].toFixed(3), forces[3].toFixed(3),
+        total.toFixed(3), (-p.copXF).toFixed(3), p.copYF.toFixed(3),
+      ].join(','));
+    }
+  }
+
+  // Session accumulators
+  if (sessionActive) {
+    sessionSamples++;
+    if (total > sessionPeak) sessionPeak = total;
+    sessionTotalAcc += total;
+    $('ss-n').textContent    = String(sessionSamples);
+    $('ss-peak').textContent = Math.round(sessionPeak);
+    $('ss-avg').textContent  = Math.round(sessionTotalAcc / sessionSamples);
+  }
+
+  // Hz pill — trailing 2 s window
+  const now = Date.now();
+  sampleTimes.push(now);
+  while (sampleTimes.length && now - sampleTimes[0] >= 2000) sampleTimes.shift();
+  if (sampleTimes.length >= 2) {
+    $('hz-val').textContent = (sampleTimes.length / 2).toFixed(0);
+    $('hz-pill').style.display = '';
+  }
+
+  scheduleRender();
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+//  WebSocket client
+// ════════════════════════════════════════════════════════════════════════════
+function connect() {
+  if (ws && ws.readyState <= WebSocket.OPEN) return;
+  const host = $('host-input').value.trim();
+  if (!host) { log('Enter a hostname or IP first', 'warn'); return; }
+  const url = `ws://${host}:${WS_PORT}`;
+  log('Connecting to ' + url);
+  $('btn-connect').disabled = true;
+  userDisconnect = false;
+
+  ws = new WebSocket(url);
+
+  ws.onopen = () => {
+    connected = true;
+    setStatus('connected');
+    log('Connected to ' + url, 'ok');
+    // Ask the device to send its current status so the calibration panel
+    // populates and the esp-info line fills in.
+    sendCmd('s');
+  };
+
+  ws.onclose = () => {
+    connected = false;
+    ws = null;
+    $('btn-connect').disabled = false;
+    if (sessionActive) stopSession();
+    setStatus('disconnected');
+    log('Disconnected');
+    if (!userDisconnect) {
+      log('Reconnecting in 3s…', 'warn');
+      setTimeout(() => { if (!connected) connect(); }, 3000);
+    }
+  };
+
+  ws.onerror = () => log('WebSocket error — check host and that the device is on the same network', 'err');
+
+  ws.onmessage = (ev) => {
+    const line = ev.data.trim();
+    if (!line) return;
+    handleLine(line);
+  };
+}
+
+function disconnect() {
+  userDisconnect = true;
+  if (ws) ws.close();
+}
+
+function sendCmd(cmd) {
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(cmd);
+    log('→ ' + cmd);
+  } else {
+    log('Not connected', 'warn');
+  }
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+//  Line dispatcher — [STATUS] / [INFO] / [CAL...] / posting line
+// ════════════════════════════════════════════════════════════════════════════
+function handleLine(line) {
+  if (line.startsWith('[STATUS]')) {
+    try {
+      const s = JSON.parse(line.slice(8).trim());
+      handleStatus(s);
+    } catch (e) { log('Bad STATUS JSON', 'err'); }
+    return;
+  }
+  if (line.startsWith('[INFO]')) {
+    log(line.slice(6).trim());
+    return;
+  }
+  if (line.startsWith('[CAL')) {
+    appendCalLog(line);
+    return;
+  }
+  // Posting line
+  const m = line.match(LINE_RE);
+  if (m) {
+    const deviceMs = parseInt(m[1], 10);
+    const fl = parseFloat(m[2]), fr = parseFloat(m[3]);
+    const bl = parseFloat(m[4]), br = parseFloat(m[5]);
+    const isCalibrated = line.includes('g ') || line.endsWith('g');
+    // Reject zero-spike frames (HX711 timeout signature).
+    const total = (parseFloat(m[6]) || (fl + fr + bl + br));
+    if (isCalibrated && total > 50 && (fl === 0 || fr === 0 || bl === 0 || br === 0)) return;
+    handleFrame(deviceMs, fl, fr, bl, br, isCalibrated);
+    return;
+  }
+  // Firmware-internal lines we don't parse (e.g. live dumps "[LIVE] Calibrated…")
+  // still show up in the log for visibility.
+  log(line);
+}
+
+function handleStatus(s) {
+  if (!s) return;
+  const parts = [];
+  if (s.ip)    parts.push('IP ' + s.ip);
+  if (s.mdns)  parts.push(s.mdns);
+  if (s.port)  parts.push('port ' + s.port);
+  if (s.heap)  parts.push('heap ' + Math.round(s.heap / 1024) + 'KB');
+  $('esp-info').textContent = parts.join(' · ');
+  if (Array.isArray(s.cells)) updateCalPanel(s.cells);
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+//  Calibration panel
+// ════════════════════════════════════════════════════════════════════════════
+function updateCalPanel(cells) {
+  const names = ['FL', 'FR', 'BL', 'BR'];
+  $('cal-status-grid').innerHTML = cells.map((c, i) => {
+    const cls = !c.connected ? 'badge-red' : c.calibrated ? 'badge-green' : 'badge-amber';
+    const txt = !c.connected ? 'No signal' : c.calibrated ? 'Calibrated' : 'Uncalibrated';
+    return `<div class="cal-cell">
+      <div class="cal-cell-name c-${names[i].toLowerCase()}">${c.name ?? names[i]}</div>
+      <div class="cal-cell-status"><span class="badge ${cls}">${txt}</span></div>
+      <div class="cal-cell-detail">
+        Scale: ${c.scale != null ? Number(c.scale).toFixed(2) : '–'}<br>
+        Offset: ${c.offset ?? '–'}<br>
+        2-point: ${c.twoPoint ? 'yes' : 'no'}
+      </div>
+    </div>`;
+  }).join('');
+  $('btn-cal-all').disabled   = !connected;
+  $('btn-reset-all').disabled = !connected;
+}
+
+function appendCalLog(line) {
+  const el = $('cal-log');
+  const d = document.createElement('div');
+  const cls = line.includes('ERR') ? 'log-err'
+            : line.includes('WARN') ? 'log-warn'
+            : 'log-ok';
+  d.className = 'log-line ' + cls;
+  d.textContent = line;
+  el.appendChild(d);
+  el.scrollTop = el.scrollHeight;
+  while (el.children.length > 500) el.removeChild(el.firstChild);
+  // Also echo into main log so the user sees cal prompts on the Live tab.
+  log(line, cls.replace('log-', ''));
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+//  Session recording → CSV download
+// ════════════════════════════════════════════════════════════════════════════
+function startSession() {
+  if (sessionActive) return;
+  csvRows = [];
+  sessionSamples = 0; sessionPeak = 0; sessionTotalAcc = 0;
+  sessionStart = Date.now();
+  sessionActive = true;
+  pipeline.startSession();
+  $('btn-record').disabled = true;
+  $('btn-stop').disabled   = false;
+  setStatus('recording');
+  $('ss-n').textContent = '0';
+  ['ss-dur','ss-peak','ss-avg'].forEach(id => $(id).textContent = '–');
+  timerHandle = setInterval(() => {
+    const s = Math.floor((Date.now() - sessionStart) / 1000);
+    $('ss-dur').textContent = `${String(Math.floor(s/60)).padStart(2,'0')}:${String(s%60).padStart(2,'0')}`;
+  }, 500);
+  // Ensure device is posting.
+  sendCmd('start');
+  log('Session started', 'ok');
+}
+
+function stopSession() {
+  if (!sessionActive) return;
+  sessionActive = false;
+  pipeline.stopSession();
+  clearInterval(timerHandle); timerHandle = null;
+  $('btn-record').disabled = false;
+  $('btn-stop').disabled   = true;
+  if (connected) setStatus('connected');
+  if (!csvRows.length) { log('No data to save', 'warn'); return; }
+  const header = 'timestamp,elapsed_s,device_ms,fl_g,fr_g,bl_g,br_g,total_g,cop_x_mm,cop_y_mm\n';
+  const blob = new Blob([header + csvRows.join('\n')], { type: 'text/csv' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'forceplate_' + new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19) + '.csv';
+  a.click();
+  log(`Saved ${csvRows.length} samples → ${a.download}`, 'ok');
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+//  CSV replay — parse file, feed rows through the same pipeline
+// ════════════════════════════════════════════════════════════════════════════
+function loadReplay(text) {
+  const lines = text.trim().split(/\r?\n/);
+  if (lines.length < 2) { log('CSV empty', 'warn'); return; }
+  replayRows = lines.slice(1).map(l => {
+    const c = l.split(',');
+    return {
+      elapsedS: parseFloat(c[1]),
+      deviceMs: parseInt(c[2], 10),
+      fl: parseFloat(c[3]), fr: parseFloat(c[4]),
+      bl: parseFloat(c[5]), br: parseFloat(c[6]),
+    };
+  }).filter(r => !isNaN(r.fl) && !isNaN(r.elapsedS));
+  log(`Loaded ${replayRows.length} samples from CSV`, 'ok');
+  $('btn-replay').disabled = replayRows.length === 0;
+}
+
+function startReplay() {
+  if (!replayRows.length) return;
+  clearVisuals(); pipeline.reset();
+  replayActive = true;
+  $('btn-replay').style.display = 'none';
+  $('btn-replay-stop').style.display = '';
+  log(`Replaying ${replayRows.length} samples…`, 'ok');
+  let idx = 0;
+  function next() {
+    if (!replayActive || idx >= replayRows.length) { stopReplay(); return; }
+    const r = replayRows[idx];
+    handleFrame(r.deviceMs, r.fl, r.fr, r.bl, r.br, true);
+    idx++;
+    if (idx < replayRows.length) {
+      const dt = (replayRows[idx].elapsedS - r.elapsedS) * 1000;
+      replayHandles.push(setTimeout(next, Math.max(0, dt)));
+    } else {
+      stopReplay();
+    }
+  }
+  next();
+}
+function stopReplay() {
+  replayHandles.forEach(h => clearTimeout(h));
+  replayHandles = [];
+  replayActive = false;
+  $('btn-replay').style.display = '';
+  $('btn-replay-stop').style.display = 'none';
+  log('Replay stopped');
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+//  UI helpers
+// ════════════════════════════════════════════════════════════════════════════
+function setText(id, v) { const el = $(id); if (el) el.textContent = v; }
+
+function setStatus(state) {
+  const dot = $('status-dot'), txt = $('status-text');
+  dot.className = 'dot';
+  const buttons = ['btn-record','btn-tare','btn-status'];
+  if (state === 'connected') {
+    dot.classList.add('on'); txt.textContent = 'Connected';
+    $('btn-connect').disabled = true;
+    $('btn-disconnect').disabled = false;
+    buttons.forEach(id => $(id).disabled = false);
+    $('btn-stop').disabled = true;
+    $('cmd-row').style.display = '';
+  } else if (state === 'recording') {
+    dot.classList.add('rec'); txt.textContent = 'Recording';
+  } else {
+    txt.textContent = 'Disconnected';
+    $('btn-connect').disabled = false;
+    $('btn-disconnect').disabled = true;
+    buttons.forEach(id => $(id).disabled = true);
+    $('btn-stop').disabled = true;
+    $('cmd-row').style.display = 'none';
+    $('hz-pill').style.display = 'none';
+    $('esp-info').textContent = '';
+    sampleTimes.length = 0;
+    cornerVals.forEach(el => el.textContent = '–');
+    $('v-total').textContent = '–';
+    // Uncalibrated cal panel
+    $('cal-status-grid').innerHTML = '';
+    $('btn-cal-all').disabled = true;
+    $('btn-reset-all').disabled = true;
+  }
+}
+
+function log(msg, cls = '') {
+  const el = $('log');
+  const d = document.createElement('div');
+  d.className = 'log-line' + (cls ? ' log-' + cls : '');
+  d.textContent = new Date().toLocaleTimeString('en', { hour12: false }) + '  ' + msg;
+  el.appendChild(d); el.scrollTop = el.scrollHeight;
+  while (el.children.length > 300) el.removeChild(el.firstChild);
+}
+
+function switchTab(id) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === id));
+  document.querySelectorAll('.panel').forEach(p => p.classList.toggle('active', p.id === 'panel-' + id));
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+//  Event wiring
+// ════════════════════════════════════════════════════════════════════════════
+$('btn-connect').addEventListener('click', connect);
+$('btn-disconnect').addEventListener('click', disconnect);
+$('btn-record').addEventListener('click', startSession);
+$('btn-stop').addEventListener('click', stopSession);
+$('btn-tare').addEventListener('click', () => sendCmd('t'));
+$('btn-status').addEventListener('click', () => sendCmd('s'));
+$('btn-reset-view').addEventListener('click', () => {
+  clearVisuals(); pipeline.reset(); log('View reset');
+});
+$('host-input').addEventListener('keydown', e => { if (e.key === 'Enter') connect(); });
+$('btn-send-cmd').addEventListener('click', () => {
+  const v = $('cmd-input').value.trim();
+  if (v) { sendCmd(v); $('cmd-input').value = ''; }
+});
+$('cmd-input').addEventListener('keydown', e => { if (e.key === 'Enter') $('btn-send-cmd').click(); });
+
+$('btn-cal-all').addEventListener('click', () => {
+  appendCalLog('[CAL] Starting calibration sequence — follow the prompts below.');
+  sendCmd('c');
+});
+$('btn-reset-all').addEventListener('click', () => {
+  if (!confirm('Reset ALL calibration? This cannot be undone.')) return;
+  sendCmd('x');
+  appendCalLog('[CAL] Reset-all sent.');
+});
+
+$('btn-open-csv').addEventListener('click', () => $('replay-file').click());
+$('replay-file').addEventListener('change', e => {
+  const f = e.target.files[0];
+  if (!f) return;
+  $('replay-file-name').textContent = f.name;
+  const rdr = new FileReader();
+  rdr.onload = ev => loadReplay(ev.target.result);
+  rdr.readAsText(f);
+});
+$('btn-replay').addEventListener('click', startReplay);
+$('btn-replay-stop').addEventListener('click', stopReplay);
+
+document.querySelectorAll('.tab').forEach(t => {
+  t.addEventListener('click', () => switchTab(t.dataset.tab));
+});
+
+// Initial UI state
+setStatus('disconnected');
+updateMetricsDisplay(null);
+</script>
+</body>
+</html>

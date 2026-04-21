@@ -1,7 +1,12 @@
 // WiFi credentials — copy this file to wifi_config.h and fill in your details.
 // wifi_config.h is gitignored so credentials are never committed.
+//
+// List as many networks as you like. The ESP will try each in order and
+// connect to the first one that responds.
 
 #pragma once
 
-#define WIFI_SSID     "YourNetworkName"
-#define WIFI_PASSWORD "YourPassword"
+#define WIFI_CREDENTIALS { \
+    {"YourPrimaryNetwork",   "PrimaryPassword"}, \
+    {"YourBackupNetwork",    "BackupPassword"}, \
+}

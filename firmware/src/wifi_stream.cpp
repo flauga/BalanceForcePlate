@@ -2,82 +2,77 @@
 #include <esp_wifi.h>
 #include "wifi_stream.h"
 
-WiFiStream::WiFiStream(uint16_t tcpPort, const char* hostname)
-    : _tcpPort(tcpPort)
+WiFiStream* WiFiStream::_instance = nullptr;
+
+WiFiStream::WiFiStream(uint16_t wsPort, const char* hostname)
+    : _wsPort(wsPort)
     , _hostname(hostname)
-    , _server(tcpPort)
+    , _ws(wsPort)
 {
+    _instance = this;
 }
 
-bool WiFiStream::begin(const char* ssid, const char* password, uint32_t timeoutMs) {
+bool WiFiStream::begin(const WifiCredential* creds, size_t count, uint32_t timeoutMs) {
     WiFi.mode(WIFI_STA);
-    WiFi.begin(ssid, password);
 
-    Serial.print("{\"status\":\"wifi_connecting\",\"ssid\":\"");
-    Serial.print(ssid);
-    Serial.println("\"}");
+    for (size_t i = 0; i < count; ++i) {
+        WiFi.begin(creds[i].ssid, creds[i].password);
 
-    const uint32_t start = millis();
-    while (WiFi.status() != WL_CONNECTED) {
-        if (millis() - start > timeoutMs) {
-            Serial.println("{\"status\":\"wifi_timeout\"}");
-            return false;
+        Serial.print("{\"status\":\"wifi_connecting\",\"ssid\":\"");
+        Serial.print(creds[i].ssid);
+        Serial.print("\",\"attempt\":");
+        Serial.print(i + 1);
+        Serial.print(",\"of\":");
+        Serial.print(count);
+        Serial.println("}");
+
+        const uint32_t start = millis();
+        while (WiFi.status() != WL_CONNECTED) {
+            if (millis() - start > timeoutMs) {
+                Serial.print("{\"status\":\"wifi_timeout\",\"ssid\":\"");
+                Serial.print(creds[i].ssid);
+                Serial.println("\"}");
+                WiFi.disconnect();
+                break;
+            }
+            delay(200);
         }
-        delay(200);
+
+        if (WiFi.status() == WL_CONNECTED) {
+            return _postConnect();
+        }
     }
 
-    // Disable modem-sleep so the radio stays active continuously.
+    Serial.println("{\"status\":\"wifi_all_failed\"}");
+    return false;
+}
+
+bool WiFiStream::_postConnect() {
     esp_wifi_set_ps(WIFI_PS_NONE);
     WiFi.setTxPower(WIFI_POWER_19_5dBm);
 
     Serial.print("{\"status\":\"wifi_connected\",\"ip\":\"");
     Serial.print(WiFi.localIP().toString());
+    Serial.print("\",\"ssid\":\"");
+    Serial.print(WiFi.SSID());
     Serial.print("\",\"mdns\":\"");
     Serial.print(_hostname);
-    Serial.print(".local\",\"udpPort\":");
-    Serial.print(UDP_PORT);
+    Serial.print(".local\",\"wsPort\":");
+    Serial.print(_wsPort);
     Serial.println("}");
 
-    // Start mDNS
     if (MDNS.begin(_hostname)) {
-        MDNS.addService("_force-plate", "_tcp", _tcpPort);
+        MDNS.addService("ws", "tcp", _wsPort);
     }
 
-    // Start TCP server for commands and status
-    _server.begin();
-    _server.setNoDelay(true);
-
-    // Start UDP socket for data streaming
-    _udp.begin(UDP_PORT);
-
-    Serial.print("{\"status\":\"wifi_ps_mode\",\"mode\":");
-    wifi_ps_type_t psMode;
-    esp_wifi_get_ps(&psMode);
-    Serial.print((int)psMode);
-    Serial.println("}");
+    _ws.begin();
+    _ws.onEvent(&WiFiStream::_onEventStatic);
 
     return true;
 }
 
 void WiFiStream::update() {
-    // Accept new TCP client if none connected
-    if (!_client || !_client.connected()) {
-        if (_client) {
-            _client.stop();
-            _hasClientIP = false;
-        }
-        WiFiClient newClient = _server.accept();
-        if (newClient) {
-            _client = newClient;
-            _client.setNoDelay(true);
-            _clientIP = _client.remoteIP();
-            _hasClientIP = true;
-            Serial.print("{\"status\":\"wifi_client_connected\",\"clientIP\":\"");
-            Serial.print(_clientIP.toString());
-            Serial.println("\"}");
-            _pendingConnected = true;
-        }
-    }
+    _ws.loop();
 
     if (_pendingConnected) {
         _pendingConnected = false;
@@ -86,13 +81,8 @@ void WiFiStream::update() {
 }
 
 void WiFiStream::sendData(const char* line) {
-    if (!_hasClientIP) return;
-
-    // Send via UDP — no ACK, no congestion window, no delayed ACK.
-    // At 40 Hz * ~80 bytes = 3.2 KB/s, well within WiFi capacity.
-    _udp.beginPacket(_clientIP, UDP_PORT);
-    _udp.println(line);
-    _udp.endPacket();
+    if (_ws.connectedClients() == 0) return;
+    _ws.broadcastTXT(line);
 }
 
 void WiFiStream::println(const String& line) {
@@ -100,14 +90,8 @@ void WiFiStream::println(const String& line) {
 }
 
 void WiFiStream::println(const char* line) {
-    if (!_client || !_client.connected()) return;
-
-    size_t written = _client.println(line);
-    if (written == 0) {
-        if (++_writeFails >= 3) { _client.stop(); _writeFails = 0; _hasClientIP = false; }
-    } else {
-        _writeFails = 0;
-    }
+    if (_ws.connectedClients() == 0) return;
+    _ws.broadcastTXT(line);
 }
 
 void WiFiStream::setClientConnectedCallback(std::function<void()> cb) {
@@ -115,32 +99,48 @@ void WiFiStream::setClientConnectedCallback(std::function<void()> cb) {
 }
 
 String WiFiStream::readLine() {
-    if (!_client || !_client.connected()) return "";
-    while (_client.available()) {
-        char c = (char)_client.read();
-        if (c == '\n' || c == '\r') {
-            if (_wifiBufLen > 0) {
-                _wifiBuf[_wifiBufLen] = '\0';
-                String result(_wifiBuf);
-                _wifiBufLen = 0;
-                return result;
-            }
-        } else if (_wifiBufLen < sizeof(_wifiBuf) - 1) {
-            _wifiBuf[_wifiBufLen++] = c;
+    if (_pendingCmd.length() == 0) return "";
+    String out = _pendingCmd;
+    _pendingCmd = "";
+    return out;
+}
+
+void WiFiStream::_onEventStatic(uint8_t num, WStype_t type, uint8_t* payload, size_t length) {
+    if (_instance) _instance->_onEvent(num, type, payload, length);
+}
+
+void WiFiStream::_onEvent(uint8_t num, WStype_t type, uint8_t* payload, size_t length) {
+    switch (type) {
+        case WStype_CONNECTED: {
+            IPAddress ip = _ws.remoteIP(num);
+            Serial.print("{\"status\":\"ws_client_connected\",\"clientIP\":\"");
+            Serial.print(ip.toString());
+            Serial.print("\",\"num\":");
+            Serial.print(num);
+            Serial.println("}");
+            _pendingConnected = true;
+            break;
         }
+        case WStype_DISCONNECTED:
+            Serial.print("{\"status\":\"ws_client_disconnected\",\"num\":");
+            Serial.print(num);
+            Serial.println("}");
+            break;
+
+        case WStype_TEXT: {
+            // WebSocket frames are already message-framed, so the whole
+            // payload is one command. Strip trailing newlines defensively.
+            if (length > 0 && _pendingCmd.length() == 0) {
+                _pendingCmd.reserve(length);
+                for (size_t i = 0; i < length; ++i) {
+                    char c = (char)payload[i];
+                    if (c == '\n' || c == '\r') continue;
+                    _pendingCmd += c;
+                }
+            }
+            break;
+        }
+        default:
+            break;
     }
-    return "";
-}
-
-bool WiFiStream::clientConnected() {
-    return _client && _client.connected();
-}
-
-bool WiFiStream::wifiConnected() const {
-    return WiFi.status() == WL_CONNECTED;
-}
-
-String WiFiStream::ipAddress() const {
-    if (WiFi.status() != WL_CONNECTED) return "";
-    return WiFi.localIP().toString();
 }

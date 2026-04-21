@@ -6,6 +6,8 @@
 #if __has_include("wifi_config.h")
   #include "wifi_config.h"
   #define WIFI_ENABLED 1
+  static const WifiCredential wifiCreds[] = WIFI_CREDENTIALS;
+  static constexpr size_t     wifiCredCount = sizeof(wifiCreds) / sizeof(wifiCreds[0]);
 #else
   #define WIFI_ENABLED 0
 #endif
@@ -27,12 +29,12 @@ struct CalData {
 
 // ─── WiFi ─────────────────────────────────────────────────────────────────────
 #if WIFI_ENABLED
-static WiFiStream wifiStream(8888);
+static WiFiStream wifiStream;   // defaults: ws://force-plate.local:80
 static bool wifiActive = false;
 #endif
 
-// Broadcast a line to Serial and (if connected) WiFi TCP client.
-// Used for status, calibration, and info messages (low frequency, needs reliability).
+// Broadcast a line to Serial and (if connected) all WebSocket clients.
+// Used for status, calibration, and info messages.
 static void broadcast(const char* line) {
     Serial.println(line);
 #if WIFI_ENABLED
@@ -45,7 +47,7 @@ static void broadcast(const String& line) {
     broadcast(line.c_str());
 }
 
-// Send a data line via Serial + WiFi UDP (high frequency, latency-critical).
+// Send a data line via Serial + WebSocket broadcast (40 Hz posting stream).
 static void broadcastData(const char* line) {
     Serial.println(line);
 #if WIFI_ENABLED
@@ -97,6 +99,7 @@ static void eepromReadCalData(int idx) {
     calData[idx].twoPoint    = EEPROM.read(a) == 1;
 }
 
+// EEPROM layout and helpers end here
 static void initEEPROM() {
     EEPROM.begin(EEPROM_SIZE);
     if (EEPROM.read(MAGIC_ADDR) != EEPROM_MAGIC) {
@@ -141,6 +144,14 @@ static void printStatus() {
     }
     s += "],\"postingMode\":";
     s += postingMode ? "true" : "false";
+#if WIFI_ENABLED
+    if (WiFi.status() == WL_CONNECTED) {
+        s += ",\"ip\":\"";   s += WiFi.localIP().toString();
+        s += "\",\"mdns\":\"force-plate.local\"";
+        s += ",\"port\":80";
+    }
+#endif
+    s += ",\"heap\":"; s += (uint32_t)ESP.getFreeHeap();
     s += '}';
     broadcast(s);
 }
@@ -491,11 +502,7 @@ void setup() {
 
     initEEPROM();
 
-    // Init HX711 GPIO without waiting (don't use begin() which blocks)
-    for (int i = 0; i < NUM_CELLS; i++) {
-        // beginGpio via sensors.rescan() below
-    }
-
+    // HX711 GPIO init is handled inside detectConnectedCells() → sensors.rescan()
     detectConnectedCells();
 
     if (connectedCount == 0) {
@@ -508,7 +515,7 @@ void setup() {
     }
 
 #if WIFI_ENABLED
-    wifiActive = wifiStream.begin(WIFI_SSID, WIFI_PASSWORD);
+    wifiActive = wifiStream.begin(wifiCreds, wifiCredCount);
     if (wifiActive) {
         // Re-send status to any WiFi client that connects after boot
         wifiStream.setClientConnectedCallback([]() {
